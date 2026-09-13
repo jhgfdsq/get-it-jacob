@@ -9,6 +9,7 @@ const parsed = await PDFDocument.load(pdf);
 const pages = parsed.getPages().map((p, pageIndex) => ({ pageIndex, ...p.getSize(), text: 'Texte de test local.' }));
 const folder = 'work/qa-ui'; fs.mkdirSync(folder, { recursive: true });
 const requests = [], errors = [];
+let savedDrafts = { drafts: {}, outbox: {} };
 const browser = await chromium.launch({ headless: true, channel: 'chrome' });
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
 page.on('pageerror', error => errors.push(error.message));
@@ -21,6 +22,7 @@ await page.route('**/api/**', async route => {
   if (url.pathname === '/api/preparation/fixture-document' && req.method() === 'GET') return respond({ status: 'ready', completedPages: pages.length, totalPages: pages.length });
   if (url.pathname === '/api/doc/fixture-document/touch') return respond({ ok: true });
   if (url.pathname === '/api/manual-viz/fixture-document' && req.method() === 'GET') return respond({ visuals: [{ id: 'visual-fixture', createdAt: 1, pageIndex: 1, selection: 'Passage exemple', spec: { kind: 'diagram', title: 'Relations entre les éléments', explanation: 'Relations de contrôle pour vérifier le rendu.', sourcePages: [2], nodes: [{id:'a',label:'Source'},{id:'b',label:'Réseau'},{id:'c',label:'Alimentation'},{id:'d',label:'Calcul'}], edges: [{from:'a',to:'b',label:'transmet'},{from:'a',to:'c',label:'alimente'},{from:'b',to:'d',label:'dessert'},{from:'c',to:'d',label:'alimente'}] } }] });
+  if (url.pathname === '/api/chat/fixture-document/drafts') { if (req.method() === 'PUT') savedDrafts = req.postDataJSON(); return respond(savedDrafts); }
   if (url.pathname === '/api/chat/fixture-document' && req.method() === 'GET') return respond({ chats: [{ id: 'chat-fixture', title: 'Discussion existante', createdAt: 1, updatedAt: 1, messages: [] }] });
   if (url.pathname.includes('health') || url.pathname.includes('auth') || url.pathname.includes('account')) return respond({ ok: true, status: 'ready', authenticated: true, provider: 'codex' });
   if (url.pathname === '/api/settings') return respond({ theme: 'light', provider: 'codex', codexEffortFast: 'low' });
@@ -57,7 +59,7 @@ try {
   await scrollTo(1);
   assert.equal(await page.evaluate(() => window.__sent.length), 0, 'scroll sends no AI');
   const beforeZoom = await page.locator('[data-page="1"]').boundingBox();
-  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+  await page.getByRole('button', { name: 'Agrandir', exact: true }).click();
   await page.waitForTimeout(300);
   const afterZoom = await page.locator('[data-page="1"]').boundingBox();
   assert(afterZoom.width > beforeZoom.width, 'zoom changes page geometry');
@@ -67,11 +69,11 @@ try {
   const box = await span.boundingBox(); assert(box && box.width > 5 && box.height > 5);
   await page.mouse.move(box.x + 1, box.y + box.height / 2);
   await page.mouse.down(); await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 15 }); await page.mouse.up();
-  await page.getByRole('toolbar', { name: 'Actions sur la sélection' }).waitFor();
+  await page.getByRole('toolbar', { name: 'Outils du document' }).waitFor();
   const selected = await page.evaluate(() => window.getSelection().toString()); assert(selected.trim().length > 4, 'text genuinely selectable at zoom');
   await page.screenshot({ path: path.join(folder, '02-selection-zoom.png') });
   assert.equal(await page.evaluate(() => window.__sent.length), 0, 'selection sends no AI');
-  await page.getByRole('button', { name: 'Expliquer', exact: true }).click();
+  await page.getByRole('button', { name: 'Discuter', exact: true }).click();
   await page.getByText('Passage sélectionné · page 2').waitFor();
   assert.equal(await page.evaluate(() => window.__sent.length), 0, 'explain only drafts until send');
   await page.getByRole('textbox', { name: '' }).last().fill('Développe ce passage.');

@@ -1,18 +1,9 @@
 // Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
-/**
- * Top-bar Account button + popover. One coherent panel for every provider:
- *
- *   • Identity (email / plan) when connected, or a "Connect" prompt.
- *   • Usage — subscription LIMITS only for engines that expose them (Codex on
- *     a ChatGPT login: 5h/weekly), or per-day TOKENS for everyone else
- *     (Claude, Gemini, Pi, and Codex on an API key) where no limit is readable.
- *   • Provider-agnostic Sign out + Switch provider, both routed through the
- *     single setup wizard.
- */
+// Connection and usage live here; appearance and response preferences live in Settings.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CircleUserRound,
@@ -23,6 +14,7 @@ import {
   ExternalLink,
   Settings2,
   Gauge,
+  X,
 } from "lucide-react";
 
 import type { ProviderName } from "@/lib/provider-types";
@@ -72,6 +64,8 @@ type ProviderStatus = {
 export default function AccountButton() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -79,7 +73,7 @@ export default function AccountButton() {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") { setOpen(false); trigger.current?.focus(); }
     };
     window.addEventListener("mousedown", onClick);
     window.addEventListener("keydown", onKey);
@@ -96,7 +90,10 @@ export default function AccountButton() {
           type="button"
           onClick={() => setOpen((v) => !v)}
           className="tab-icon-btn"
-          aria-label="Account"
+          ref={trigger}
+          aria-label="Compte ChatGPT"
+          aria-expanded={open}
+          aria-controls={panelId}
         >
           <CircleUserRound className="h-3.5 w-3.5" />
         </button>
@@ -109,14 +106,17 @@ export default function AccountButton() {
       <AnimatePresence>
         {open && (
           <motion.div
+            id={panelId}
+            role="region"
+            aria-label="Compte ChatGPT"
             key="account-menu"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.12 }}
-            className="absolute right-0 top-full z-30 mt-1.5 w-[22rem] overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-popover)]"
+            className="absolute right-0 top-full z-[70] mt-1.5 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--surface-raised)] shadow-[var(--shadow-popover)]"
           >
-            <AccountPanel open={open} />
+            <AccountPanel open={open} onClose={() => { setOpen(false); trigger.current?.focus(); }} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -124,13 +124,12 @@ export default function AccountButton() {
   );
 }
 
-function openSetup() {
-  if (typeof window !== "undefined" && window.getit?.runCodexSetup) {
-    window.getit.runCodexSetup().catch(() => {});
-  }
+async function openSetup() {
+  if (!window.getit?.runCodexSetup) throw new Error("Ouvrez l’application Get It Jacob pour connecter ChatGPT.");
+  await window.getit.runCodexSetup();
 }
 
-function AccountPanel({ open }: { open: boolean }) {
+function AccountPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [data, setData] = useState<ProviderStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -151,9 +150,9 @@ function AccountPanel({ open }: { open: boolean }) {
           setLoading(false);
         }
       })
-      .catch((e) => {
+      .catch(() => {
         if (!cancelled) {
-          setErr((e as Error).message);
+          setErr("Impossible de lire l’état du compte. Fermez puis rouvrez ce menu pour réessayer.");
           setLoading(false);
         }
       });
@@ -166,73 +165,93 @@ function AccountPanel({ open }: { open: boolean }) {
     if (busy || !data) return;
     const msg =
       data.authMode === "apiKey"
-        ? "Disconnect and clear the saved key for this provider? Your library and study data stay on this device."
-        : "Sign out? Your library and study data stay on this device.";
+        ? "Se déconnecter et effacer la clé enregistrée ? Vos documents et conversations restent sur ce Mac."
+        : "Se déconnecter de ChatGPT ? Vos documents et conversations restent sur ce Mac.";
     if (!confirm(msg)) return;
     setBusy(true);
+    setErr(null);
     try {
-      await fetch("/api/provider/logout", {
+      const response = await fetch("/api/provider/logout", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ provider: data.provider }),
       });
+      if (!response.ok) throw new Error();
+      setData({ ...data, authenticated: false, account: null, rateLimits: null, usage: null });
     } catch {
-      /* ignore */
+      setErr("Impossible de confirmer la déconnexion. Fermez puis rouvrez ce menu pour vérifier l’état du compte.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
-    openSetup();
   }, [busy, data]);
+
+  const handleConnect = async () => {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await openSetup();
+      onClose();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : "Impossible d’ouvrir la connexion ChatGPT.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="px-3 py-2.5">
       <div className="flex items-center justify-between">
         <p className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--ink-500)]">
-          {data?.label ?? "AI Provider"} account
+          Compte ChatGPT
         </p>
+        <div className="flex items-center gap-2">
         {data?.authenticated && (
           <button
             type="button"
             onClick={handleSignOut}
             disabled={busy}
-            title={data.authMode === "apiKey" ? "Disconnect / clear key" : "Sign out and return to setup"}
+            title="Se déconnecter de ChatGPT"
             className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-0.5 text-[10.5px] font-medium text-[var(--ink-700)] transition hover:border-[var(--feedback-wrong-border)] hover:bg-[var(--feedback-wrong-bg)] hover:text-[var(--feedback-wrong-text)] disabled:opacity-50"
           >
             {busy ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <LogOut className="h-2.5 w-2.5" />}
-            {busy ? "…" : data.authMode === "apiKey" ? "Disconnect" : "Sign out"}
+            {busy ? "…" : "Se déconnecter"}
           </button>
         )}
+        <button type="button" onClick={onClose} aria-label="Fermer le compte" className="rounded p-1 text-[var(--ink-500)] hover:bg-[var(--surface-sunken)]"><X className="h-3.5 w-3.5" /></button>
+        </div>
       </div>
 
       {loading && (
         <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--ink-400)]">
           <RefreshCw className="h-3 w-3 animate-spin text-[var(--accent-600)]" />
-          fetching status…
+          Chargement du compte…
         </div>
       )}
 
-      {!loading && (err || !data) && (
-        <p className="mt-1.5 text-[11px] text-[var(--ink-400)]">No data.</p>
+      {!loading && err && (
+        <p role="alert" className="mt-1.5 text-[11px] text-[var(--feedback-wrong-text)]">{err}</p>
       )}
 
       {!loading && data && (
         <>
           {/* Identity */}
-          {data.authenticated && data.account ? (
+          {data.authenticated ? (
             <div className="mt-1.5 flex items-center gap-2">
               <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--surface-sunken)] text-[var(--ink-500)]">
                 <UserIcon className="h-3 w-3" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12.5px] font-medium text-[var(--ink-900)]">
-                  {data.account.name ?? data.account.email ?? "Connected"}
+                  {data.account?.name ?? data.account?.email ?? "Connecté à ChatGPT"}
                 </p>
                 <p className="truncate text-[10.5px] text-[var(--ink-500)]">
-                  {data.account.email && data.account.email !== data.account.name ? data.account.email : ""}
-                  {data.account.planType ? (
+                  {data.account?.email && data.account?.email !== data.account?.name ? data.account?.email : ""}
+                  {data.account?.planType ? (
                     <>
-                      {data.account.email && data.account.email !== data.account.name ? " · " : ""}
+                      {data.account?.email && data.account?.email !== data.account?.name ? " · " : ""}
                       <span className="font-medium uppercase text-[var(--accent-700)]">
-                        {data.account.planType}
+                        {data.account?.planType}
                       </span>
                     </>
                   ) : null}
@@ -245,10 +264,9 @@ function AccountPanel({ open }: { open: boolean }) {
                 <XCircle className="h-3.5 w-3.5 text-rose-500" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-medium text-[var(--ink-900)]">{data.label}</p>
+                <p className="text-[12.5px] font-medium text-[var(--ink-900)]">ChatGPT</p>
                 <p className="text-[10.5px] text-[var(--ink-500)]">
-                  {data.authMode === "apiKey" ? "No API key set" : "Not signed in"}
-                  {data.version ? ` · v${data.version}` : ""}
+                  Non connecté
                 </p>
               </div>
             </div>
@@ -263,19 +281,19 @@ function AccountPanel({ open }: { open: boolean }) {
           {data.exposesLimits ? (
             data.rateLimits && (data.rateLimits.primary || data.rateLimits.secondary) ? (
               <div className="mt-4 space-y-1.5">
-                <LimitRow label="5h limit" win={data.rateLimits.primary} />
-                <LimitRow label="Weekly limit" win={data.rateLimits.secondary} />
+                <LimitRow label="Utilisation sur 5 heures" win={data.rateLimits.primary} />
+                <LimitRow label="Utilisation hebdomadaire" win={data.rateLimits.secondary} />
               </div>
             ) : data.authenticated ? (
               <div className="mt-4 text-[10.5px] text-[var(--ink-400)]">
-                Usage limits unavailable right now — they&apos;ll reappear shortly.
+                Les limites d’utilisation sont momentanément indisponibles.
               </div>
             ) : null
           ) : data.authenticated && data.usage && data.usage.calls > 0 ? (
             <UsageRow usage={data.usage} showCost={data.authMode === "apiKey"} />
           ) : data.authenticated ? (
             <div className="mt-4 text-[10.5px] text-[var(--ink-400)]">
-              No tokens used today yet.
+              Aucun token utilisé aujourd’hui.
             </div>
           ) : null}
 
@@ -288,16 +306,17 @@ function AccountPanel({ open }: { open: boolean }) {
               className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-[10.5px] font-medium text-[var(--ink-700)] transition hover:border-[var(--accent-300)] hover:text-[var(--accent-700)]"
             >
               <ExternalLink className="h-2.5 w-2.5" />
-              Help
+              Aide
             </a>
-            <button
+            {!data.authenticated && <button
               type="button"
-              onClick={openSetup}
+              disabled={busy}
+              onClick={() => void handleConnect()}
               className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-[10.5px] font-medium text-[var(--ink-700)] transition hover:border-[var(--accent-300)] hover:text-[var(--accent-700)]"
             >
               <Settings2 className="h-2.5 w-2.5" />
-              {data.authenticated ? "Reconnecter ChatGPT" : "Connecter ChatGPT"}
-            </button>
+              {busy ? "Connexion…" : "Connecter ChatGPT"}
+            </button>}
           </div>
         </>
       )}
@@ -316,7 +335,7 @@ function UsageRow({ usage, showCost }: { usage: ProviderUsage; showCost: boolean
     <div className="mt-4">
       <div className="flex items-center justify-between text-[11px]">
         <span className="inline-flex items-center gap-1 font-medium text-[var(--ink-700)]">
-          <Gauge className="h-3 w-3 text-[var(--accent-600)]" /> Tokens today
+          <Gauge className="h-3 w-3 text-[var(--accent-600)]" /> Tokens aujourd’hui
         </span>
         <span className="tabular-nums text-[var(--ink-900)]">
           {fmtTokens(usage.totalTokens)}
@@ -326,7 +345,7 @@ function UsageRow({ usage, showCost }: { usage: ProviderUsage; showCost: boolean
         </span>
       </div>
       <p className="mt-1 text-[10.5px] text-[var(--ink-400)]">
-        {fmtTokens(usage.inputTokens)} in · {fmtTokens(usage.outputTokens)} out · {usage.calls} call{usage.calls === 1 ? "" : "s"}
+        {fmtTokens(usage.inputTokens)} en entrée · {fmtTokens(usage.outputTokens)} en sortie · {usage.calls} appel{usage.calls === 1 ? "" : "s"}
       </p>
     </div>
   );
@@ -337,7 +356,7 @@ function LimitRow({ label, win }: { label: string; win: RateWindow }) {
     return (
       <div className="flex items-center justify-between text-[10.5px] text-[var(--ink-400)]">
         <span>{label}</span>
-        <span>no data</span>
+        <span>indisponible</span>
       </div>
     );
   }
@@ -349,8 +368,8 @@ function LimitRow({ label, win }: { label: string; win: RateWindow }) {
       <div className="flex items-center justify-between text-[11px]">
         <span className="font-medium text-[var(--ink-700)]">{label}</span>
         <span className="tabular-nums text-[var(--ink-900)]">
-          {used}% used
-          {resetIn ? <span className="ml-1 font-normal text-[var(--ink-400)]">· resets in {resetIn}</span> : null}
+          {used} % utilisés
+          {resetIn ? <span className="ml-1 font-normal text-[var(--ink-400)]">· réinitialisation dans {resetIn}</span> : null}
         </span>
       </div>
       <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[var(--surface-sunken)]">
@@ -362,11 +381,11 @@ function LimitRow({ label, win }: { label: string; win: RateWindow }) {
 
 function formatResetIn(absMs: number): string {
   const dt = absMs - Date.now();
-  if (dt <= 0) return "now";
+  if (dt <= 0) return "quelques instants";
   const totalMin = Math.round(dt / 60_000);
-  if (totalMin < 60) return `${totalMin}m`;
+  if (totalMin < 60) return `${totalMin} min`;
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  if (h < 48) return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  return `${Math.round(h / 24)}d`;
+  if (h < 48) return m > 0 ? `${h} h ${m} min` : `${h} h`;
+  return `${Math.round(h / 24)} j`;
 }

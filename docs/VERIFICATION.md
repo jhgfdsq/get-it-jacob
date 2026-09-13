@@ -42,3 +42,20 @@ Régressions : classification de pages textuelles, images, scans, tableaux, cour
 Contrôle du paquet 1.0.2 en Chrome headless : préparation du PDF fictif de trois pages en 7,380 secondes, réponse correcte à la question sur le scan en 4,832 secondes, zéro erreur navigateur et zéro appel IA à la réouverture. NSWorkspace ne détecte aucun processus de test ayant une icône Dock. Le seul serveur du paquet est un helper interne avec politique accessory.
 
 Application 1.0.2 installée dans Applications sans ouverture. Reprise du document utilisateur interrompu : 165 pages prêtes en 33,265 secondes, 37 pages visuelles, messages existants préservés, ancien état sauvegardé. Le lecteur est accessible après la reprise, sans appel IA spontané et sans application Dock de test.
+
+
+## Mise à jour 1.0.3 : menus et captures pour le chat
+
+Barre permanente hors du défilement PDF, Discuter et Créer un visuel regroupant Graphique/Diagramme. Actions texte désactivées sans sélection réelle, sélection effacée hors document. Navigation, zoom, ajustement largeur et libellés français. Réglages limités à apparence et profondeur des réponses. Compte limité à connexion, utilisation et déconnexion, avec erreurs et fermeture explicites.
+
+Capture d’une zone d’une page à partir du rendu PDF, sans capture du bureau. Cadre déplaçable avec huit poignées, Annuler et Échap. Rendu recadré haute résolution indépendant du zoom écran, aperçu agrandissable, numérotation monotone, retrait individuel et accumulation. Les pixels sont validés côté serveur avant leur stockage local. Aucun appel IA à cette étape.
+
+Contrôles unitaires : plusieurs images sur un contexte existant, restauration des captures historiques si le contexte doit être recréé, séparation par document, refus de chemins et images invalides, corps et dimensions bornés, nomenclature concurrente, enregistrement atomique des brouillons. Une image PNG tronquée a servi de contre-exemple et est rejetée sans attendre le décodeur. Une réponse déjà enregistrée est récupérée par son identifiant de requête sans nouvel appel IA ni doublon.
+
+Contrôle navigateur sur le serveur empaqueté : sélection réelle au zoom, barre fixe pendant défilement, dessin/redimensionnement/déplacement du cadre, deux captures de pages distinctes, vignettes et aperçu, menus, apparence, réglage des réponses, conservation par conversation, réouverture du brouillon, annulation, retrait et envoi unique question+images. Une coupure simulée puis rechargement conserve le message, les captures, la page et l’identifiant lors de Réessayer. Une capture ajoutée pendant un envoi reste dans le brouillon suivant. Redémarrage complet du serveur et du navigateur sur un autre port : brouillon et captures retrouvés sans appel IA. Rendus contrôlés visuellement à 1280 × 820 et 1440 × 960.
+
+Contrôle réel ChatGPT : deux images synthétiques, dont les noms et chiffres ne sont ni dans le PDF ni dans la question, ont été transmises dans un contexte déjà chargé. Le modèle a retrouvé les deux projets et leurs capacités. L’ajout des images avait laissé la conversation inchangée. La répétition du même envoi a récupéré la réponse sans doublon. Les valeurs de contrôle sont renouvelées pour chaque test.
+
+Régression du lecteur empaqueté : PDF de trois pages comprenant un scan préparé en 7,516 secondes, réponse correcte sur le scan en 3,692 secondes, réouverture sans appel IA ni erreur navigateur. Compilation production et TypeScript réussis, ESLint zéro erreur et 20 avertissements hérités. Tous les essais sont exécutés via le helper interne et Chrome headless, sans fenêtre visible, sans activation de l’application principale et sans application Dock de test.
+
+La version 1.0.3 installée a été contrôlée à son tour en arrière-plan : barre présente, action texte désactivée sans sélection, capture active et brouillon visuel restauré. Aucun envoi implicite. Les quatre fichiers JSON des documents utilisateur ont conservé leur empreinte SHA-256 lors du remplacement.

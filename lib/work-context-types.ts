@@ -7,6 +7,7 @@
  */
 
 import type { ProviderName } from "./provider-types";
+import type { CaptureAttachment } from "./capture-types";
 
 export type ChatMessage = {
   role: "user" | "assistant";
@@ -16,6 +17,10 @@ export type ChatMessage = {
   pageIndex?: number;
   /** User-selected source passage, if any. */
   selection?: string;
+  /** User-validated source crops sent together with this message. */
+  captures?: CaptureAttachment[];
+  /** Stable client id allowing a committed turn to be recovered without rerunning AI. */
+  requestId?: string;
 };
 
 export type ChatThread = {

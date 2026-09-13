@@ -1,12 +1,12 @@
 // Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { FileText, RefreshCw, AlertCircle, Upload, BookOpen } from "lucide-react";
 import PdfViewer from "@/components/PdfViewer";
 import RightPane, { type RightPaneMode } from "@/components/RightPane";
-import type { SelectionRequest } from "@/components/RightPane/ChatView";
+import type { CaptureRequest, SelectionRequest } from "@/components/RightPane/ChatView";
 import type { VisualRequest } from "@/components/RightPane/ManualVisual";
 import AccountButton from "@/components/AccountButton";
 import SettingsButton from "@/components/SettingsButton";
@@ -22,6 +22,8 @@ export default function ViewerClient({ docId }: { docId: string }) {
   const [mode, setMode] = useState<RightPaneMode>("chat");
   const [selection, setSelection] = useState<SelectionRequest | null>(null);
   const [visual, setVisual] = useState<VisualRequest | null>(null);
+  const [captureRequests, setCaptureRequests] = useState<CaptureRequest[]>([]);
+  const consumeCaptures = useCallback((ids: string[]) => setCaptureRequests(items => items.filter(item => !ids.includes(item.id))), []);
   const [starting, setStarting] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -61,13 +63,13 @@ export default function ViewerClient({ docId }: { docId: string }) {
     {error && <p role="alert" className="px-4 py-2 text-xs text-red-700">{error}</p>}
     <div className="flex min-h-0 flex-1 gap-2 bg-[var(--surface-canvas)] p-2">
       <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
-        <PdfViewer pdfUrl={meta.pdfUrl} numPages={meta.numPages} pageDims={meta.pages} tags={[]} activeTagId={null} onTagClick={() => {}} onPageChange={setPageIndex} onSelectionAction={(action, passage) => {
+        <PdfViewer key={docId} pdfUrl={meta.pdfUrl} numPages={meta.numPages} pageDims={meta.pages} tags={[]} activeTagId={null} onTagClick={() => {}} onPageChange={setPageIndex} onCapture={capture => { setCaptureRequests(items => [...items, { ...capture, id: crypto.randomUUID() }]); setMode("chat"); }} onSelectionAction={(action, passage) => {
           if (action === "discuss" || action === "explain") { setSelection({ id: Date.now(), action, ...passage }); setMode("chat"); }
           else { setVisual({ id: Date.now(), kind: action, ...passage }); setMode("visualizer"); }
         }} />
       </div>
       <div className="flex w-[46%] min-w-[400px] max-w-[760px] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
-        <RightPane docId={docId} mode={mode} onModeChange={setMode} pageIndex={pageIndex} selectionRequest={selection} visualRequest={visual} ready={preparation?.status === "ready"} />
+        <RightPane docId={docId} mode={mode} onModeChange={setMode} pageIndex={pageIndex} selectionRequest={selection} visualRequest={visual} ready={preparation?.status === "ready"} captureRequests={captureRequests} onCapturesConsumed={consumeCaptures} />
       </div>
     </div>
   </div>;

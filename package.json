@@ -1,7 +1,7 @@
 {
   "name": "get-it-jacob",
   "productName": "Get It Jacob",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Votre PDF, votre page, votre conversation.",
   "author": {
     "name": "beltromatti",
@@ -29,7 +29,8 @@
     "build:desktop:mac-arm": "npm run build && npm run electron:prepare -- --target=darwin-arm64 && node scripts/build-electron.mjs --target=mac-arm64",
     "browser:dev": "next dev --hostname 127.0.0.1",
     "test:reader": "tsx scripts/test-chat.ts && tsx scripts/test-preparation.ts && tsx scripts/test-pdf-inspection.ts && tsx scripts/test-manual-visual.ts",
-    "test:long-pdf": "tsx scripts/test-long-pdf.ts"
+    "test:long-pdf": "tsx scripts/test-long-pdf.ts",
+    "test:captures": "tsx scripts/test-captures.ts && tsx scripts/test-chat-drafts.ts && tsx scripts/test-capture-geometry.ts"
   },
   "dependencies": {
     "@napi-rs/canvas": "0.1.100",

@@ -26,9 +26,9 @@ try {
  const base=new URL(page.url()).origin;
  const chats=await(await fetch(base+'/api/chat/'+docId)).json();
  const chat=chats.chats[0];if(!chat.codexThreadId)throw Error('Missing seeded context');
- await page.getByRole('button',{name:'Jump to page',exact:true}).click();
- await page.getByRole('textbox',{name:'Go to page',exact:true}).fill('3');
- await page.getByRole('textbox',{name:'Go to page',exact:true}).press('Enter');
+ await page.getByRole('button',{name:'Aller à la page',exact:true}).click();
+ await page.getByRole('textbox',{name:'Numéro de page',exact:true}).fill('3');
+ await page.getByRole('textbox',{name:'Numéro de page',exact:true}).press('Enter');
  await page.getByText('Contexte : page 3 du PDF',{exact:true}).waitFor();
  await page.getByPlaceholder('Que souhaitez-vous comprendre ?').fill('Quel est le mot de contrôle et la capacité confirmée ?');
  const t=Date.now();const responsePromise=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/api/chat/'+docId)&&r.request().postDataJSON()?.action==='send');
