@@ -7,7 +7,8 @@
  * text items with their PDF-space positions.
  */
 
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
+import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createCanvas } from "@napi-rs/canvas";
@@ -91,6 +92,104 @@ export type ExtractedPdf = {
   numPages: number;
   pages: PdfPage[];
 };
+
+export type PdfPageInspection = {
+  pageIndex: number;
+  hasVisualContent: boolean;
+  reason: "raster-image" | "vector-content" | "structured-lines" | "text-only" | "blank";
+  imageCount: number;
+  vectorCount: number;
+};
+
+const imageOperations = new Set<number>([
+  OPS.paintImageXObject, OPS.paintImageXObjectRepeat, OPS.paintInlineImageXObject,
+  OPS.paintInlineImageXObjectGroup, OPS.paintImageMaskXObject,
+  OPS.paintImageMaskXObjectRepeat, OPS.paintImageMaskXObjectGroup,
+  OPS.paintSolidColorImageMask,
+]);
+
+/** Inspect the PDF drawing instructions, not its subject matter. A text page
+ * needs no model transcription. Keep all raster images (including OCR scans)
+ * and nontrivial vectors; ignore isolated horizontal/vertical layout rules and
+ * hyperlink annotation borders. This is intentionally conservative: a logo may
+ * be retained, and the result is not a semantic count of charts. */
+async function inspectDocumentPages(pdf: PDFDocumentProxy, signal?: AbortSignal): Promise<PdfPageInspection[]> {
+  const result: PdfPageInspection[] = [];
+  for (let pageIndex = 0; pageIndex < pdf.numPages; pageIndex++) {
+    signal?.throwIfAborted();
+    const page = await pdf.getPage(pageIndex + 1);
+    try {
+      const operators = await page.getOperatorList();
+      let imageCount = 0, vectorCount = 0, horizontal = 0, vertical = 0, textCount = 0;
+      let annotationDepth = 0;
+      let matrix = [1, 0, 0, 1, 0, 0];
+      const savedMatrices: number[][] = [];
+      const transform = ([a, b, c, d, e, f]: number[]) => {
+        const [aa, bb, cc, dd, ee, ff] = matrix;
+        matrix = [aa*a+cc*b, bb*a+dd*b, aa*c+cc*d, bb*c+dd*d, aa*e+cc*f+ee, bb*e+dd*f+ff];
+      };
+      for (let i = 0; i < operators.fnArray.length; i++) {
+        const operation = operators.fnArray[i];
+        if (operation === OPS.beginAnnotation) { annotationDepth++; continue; }
+        if (operation === OPS.endAnnotation) { annotationDepth--; continue; }
+        if (annotationDepth > 0) continue;
+        if (operation === OPS.save) { savedMatrices.push([...matrix]); continue; }
+        if (operation === OPS.restore) { matrix = savedMatrices.pop() ?? [1, 0, 0, 1, 0, 0]; continue; }
+        if (operation === OPS.paintFormXObjectBegin) {
+          savedMatrices.push([...matrix]);
+          const formMatrix = operators.argsArray[i][0] as number[] | null;
+          if (formMatrix) transform(formMatrix);
+          continue;
+        }
+        if (operation === OPS.paintFormXObjectEnd) { matrix = savedMatrices.pop() ?? [1, 0, 0, 1, 0, 0]; continue; }
+        if (operation === OPS.transform) {
+          transform(operators.argsArray[i] as number[]);
+          continue;
+        }
+        if (imageOperations.has(operation)) imageCount++;
+        else if (operation === OPS.showText || operation === OPS.showSpacedText) textCount++;
+        else if (operation === OPS.shadingFill || operation === OPS.rawFillPath) vectorCount++;
+        else if (operation === OPS.constructPath) {
+          // PDF.js 5.x: [paintOperation, [drawOperations], minMax]. endPath
+          // defines a clipping path only and has no visible content of its own.
+          const [paint, paths, bounds] = operators.argsArray[i] as [number, Array<ArrayLike<number>>, ArrayLike<number> | null];
+          if (paint === OPS.endPath) continue;
+          if (!bounds) { vectorCount++; continue; }
+          const localWidth = Math.abs(bounds[2] - bounds[0]);
+          const localHeight = Math.abs(bounds[3] - bounds[1]);
+          const width = Math.abs(matrix[0]) * localWidth + Math.abs(matrix[2]) * localHeight;
+          const height = Math.abs(matrix[1]) * localWidth + Math.abs(matrix[3]) * localHeight;
+          const commands = paths?.[0];
+          // A simple segment or narrow rectangle is usually an underline or
+          // separator. Complex paths must not disappear merely because flat.
+          const simple = commands && commands.length <= 13;
+          if (simple && height <= 0.8 && width > 2) horizontal++;
+          else if (simple && width <= 0.8 && height > 2) vertical++;
+          else if (width > 0.8 || height > 0.8) vectorCount++;
+        }
+      }
+      // Orthogonal rules together can encode a table or chart axes. Preserve
+      // them even if no raster image or large filled shape is present.
+      const structuredLines = horizontal > 0 && vertical > 0;
+      result.push({ pageIndex, imageCount, vectorCount,
+        hasVisualContent: imageCount > 0 || vectorCount > 0 || structuredLines,
+        reason: imageCount ? "raster-image" : vectorCount ? "vector-content" : structuredLines ? "structured-lines" : textCount ? "text-only" : "blank",
+      });
+    } finally { page.cleanup(); }
+  }
+  signal?.throwIfAborted();
+  return result;
+}
+
+/** Deterministic local inspection of every page. No AI or network requests. */
+export async function inspectPdfPages(buffer: ArrayBuffer | Uint8Array, signal?: AbortSignal): Promise<PdfPageInspection[]> {
+  signal?.throwIfAborted();
+  const pdf = await getDocument({
+    ...localPdfAssets, data: new Uint8Array(buffer), useSystemFonts: true, disableFontFace: true,
+  }).promise;
+  try { return await inspectDocumentPages(pdf, signal); }
+  finally { await pdf.destroy(); }
+}
 
 export async function extractPdf(buffer: ArrayBuffer | Uint8Array): Promise<ExtractedPdf> {
   const data = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
@@ -268,6 +367,8 @@ export async function createPdfPageRenderer(buffer: Uint8Array) {
     data: new Uint8Array(buffer), useSystemFonts: true, disableFontFace: true,
   }).promise;
   return {
+    /** Reuses the renderer's document instead of decoding the PDF twice. */
+    async inspect(signal?: AbortSignal) { return await inspectDocumentPages(pdf, signal); },
     async render(pageIndex: number, outputPath: string, signal?: AbortSignal) {
       signal?.throwIfAborted();
       const page = await pdf.getPage(pageIndex + 1);
@@ -285,7 +386,11 @@ export async function createPdfPageRenderer(buffer: Uint8Array) {
         try { await task.promise; } finally { signal?.removeEventListener("abort", cancel); }
         signal?.throwIfAborted();
         const temporary = `${outputPath}.tmp`;
-        await fs.writeFile(temporary, canvas.toBuffer("image/png"));
+        // Keep the original resolution and use a high-quality JPEG when the
+        // destination requests it. This avoids PNG encoding/transfer overhead
+        // for whole-page visual context; existing PNG callers stay lossless.
+        const jpeg = /\.jpe?g$/i.test(outputPath);
+        await fs.writeFile(temporary, jpeg ? canvas.toBuffer("image/jpeg", 90) : canvas.toBuffer("image/png"));
         await fs.rename(temporary, outputPath);
         // Release the backing allocation before moving to the next page.
         canvas.width = 1;

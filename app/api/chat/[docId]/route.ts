@@ -3,14 +3,14 @@
  * accompany each request. Actual assistant deltas stream immediately via SSE.
  * No detection, evaluation, or knowledge-graph work runs after a chat turn. */
 import { NextResponse } from "next/server";
-import { runDocumentAI, DOCUMENT_CHAT_INSTRUCTIONS } from "@/lib/document-ai";
+import { runDocumentAI, DOCUMENT_CHAT_INSTRUCTIONS, DOCUMENT_CONTEXT_VERSION } from "@/lib/document-ai";
 import { getDoc } from "@/lib/store";
-import { readPreparation, buildPreparedContext } from "@/lib/preparation";
+import { readPreparation, buildPreparedContext, getPreparedImagePaths } from "@/lib/preparation";
 import { loadWorkContext, saveWorkContext, newId, type ChatMessage } from "@/lib/work-context";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-const CONTEXT_VERSION = 1;
+const CONTEXT_VERSION = DOCUMENT_CONTEXT_VERSION;
 const activeChats = new Set<string>();
 
 
@@ -82,7 +82,7 @@ export async function POST(req: Request, ctx: RouteContext) {
       }, 15_000);
       try {
         const result = await runDocumentAI({
-          input, ...(canResume ? { threadId: chat.codexThreadId } : {}), signal: abort.signal,
+          input, ...(canResume ? { threadId: chat.codexThreadId } : { imagePaths: getPreparedImagePaths(docId) }), signal: abort.signal,
           onEvent(event) {
             if (firstEventMs == null) firstEventMs = Date.now() - startedAt;
             if (event.type === "text" && event.text && firstTextMs == null) firstTextMs = Date.now() - startedAt;

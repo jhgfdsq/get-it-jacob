@@ -71,37 +71,30 @@ async function main() {
     globalThis.__getItDocumentAI = {
       run: async (args: {input:string;imagePaths?:string[]}) => {
         calls++;
-        if (calls === 1) {
-          assert.equal(args.imagePaths?.length, 3);
-          return { text:JSON.stringify({pages:[0,1,2].map(pageIndex=>({pageIndex,notes:`Verified notes ${pageIndex}`}))}),threadId:"test-notes" };
-        }
-        if (calls === 2) throw new Error("Simulated service interruption");
-        if (calls === 3) {
-          assert.equal(args.imagePaths?.length, 1, "retry sends only the unfinished page");
-          assert.ok(args.imagePaths?.[0].endsWith("page-4.png"));
-          return {text:JSON.stringify({pages:[{pageIndex:3,notes:"Final page notes"}]}),threadId:"test-final-notes"};
-        }
-        assert.equal(calls, 4, "one seed after visual notes, no repeated model load");
+        assert.equal(args.imagePaths?.length, 1, "only the graphic page is sent, not text or blank pages");
+        assert.ok(args.imagePaths?.[0].endsWith("page-2.jpg"));
         assert.equal(readPreparation("resume-test").status, "preparing", "reader not ready before seed succeeds");
         assert.equal(readPreparation("resume-test").phase, "context");
         assert.ok(args.input.includes("Original full text retained 12345."));
         assert.ok(args.input.includes("PAGE PDF 4 / 4"));
-        assert.ok(args.input.includes("Final page notes"));
+        assert.ok(args.input.includes("IN ORDER, to PDF pages: 2"));
+        if (calls === 1) throw new Error("Simulated service interruption");
+        assert.equal(calls, 2, "a retry only seeds the cached source context");
         return { text:"Document prêt.", threadId:"test-seeded-chat" };
       },
     } as unknown as DocumentAIServer;
     startPreparation("resume-test");
     await globalThis.__jacobPreparations?.get("resume-test")?.promise;
     assert.equal(readPreparation("resume-test").status, "error");
-    assert.equal(readPreparation("resume-test").completedPages, 3);
-    assert.equal(calls, 2, "no automatic retry after service error");
+    assert.equal(readPreparation("resume-test").completedPages, 4);
+    assert.equal(calls, 1, "no automatic retry after service error");
     startPreparation("resume-test");
     await globalThis.__jacobPreparations?.get("resume-test")?.promise;
     assert.equal(readPreparation("resume-test").status, "ready");
     assert.equal(readPreparation("resume-test").completedPages, 4);
     assert.ok(loadWorkContext("resume-test").chats.some(chat=>chat.codexThreadId === "test-seeded-chat"));
     startPreparation("resume-test");
-    assert.equal(calls, 4, "reopening prepared document never repeats AI");
+    assert.equal(calls, 2, "reopening prepared document never repeats AI");
     assert.equal(globalThis.__jacobPreparationSlots?.running, 0);
     saveDoc({ id:"cancel-test",filename:"cancel.pdf",uploadedAt:Date.now(),numPages:2,extracted,pdfUrl:"/api/pdf/cancel-test" });
     fs.writeFileSync(pdfPath("cancel-test"), bytes);
@@ -123,7 +116,7 @@ async function main() {
     assert.equal(globalThis.__jacobPreparationSlots?.running, 0, "cancel releases render slot");
     assert.equal(globalThis.__jacobPreparations?.has("cancel-test"), false);
     globalThis.__getItDocumentAI = undefined;
-    console.log("PASS: cancellation/deletion without resurrection, full interrupted import + explicit resume only unfinished pages + default chat seeded before ready, page coverage, duplicate/wrong/empty rejection, scan rendering, interrupted preparation recovery, original text + visual notes persistence. No AI called.");
+    console.log("PASS: cancellation/deletion without resurrection, local source import + explicit seed retry from cache + default chat seeded before ready, page coverage, duplicate/wrong/empty rejection, selective visual rendering, interrupted preparation recovery, original text + visual notes persistence. No AI called.");
   } finally { fs.rmSync(directory, { recursive:true, force:true }); }
 }
 main().catch(error=>{ console.error(error); process.exitCode=1; });

@@ -34,29 +34,27 @@ async function main() {
     globalThis.__getItDocumentAI = {
       run: async (args: { input: string; imagePaths?: string[] }) => {
         if (args.imagePaths?.length) {
-          assert.ok(args.imagePaths.length <= 3, "visual batches stay bounded for large files");
+          seedCalls++;
+          assert.equal(args.imagePaths.length, pageCount, "one context load includes every visual source");
           const indices = args.imagePaths.map(file => {
-            const pageNumber = Number(path.basename(file).match(/^page-(\d+)\.png$/)?.[1]);
+            const pageNumber = Number(path.basename(file).match(/^page-(\d+)\.(?:png|jpg)$/)?.[1]);
             assert.ok(pageNumber >= 1 && pageNumber <= pageCount);
             const image = fs.readFileSync(file);
-            assert.equal(image.subarray(1, 4).toString(), "PNG", "each source page really rendered");
-            assert.equal(image.readUInt32BE(20), 2200);
+            assert.equal(image.readUInt16BE(0), 0xffd8, "each visual page really rendered as JPEG");
             assert.ok(image.length > 1000);
             assert.ok(args.input.includes(`PAGE ${pageNumber} SUR ${pageCount} - TEMOIN ${pageNumber * 17}`), "text is aligned with each rendered source page");
             pagesSeen.push(pageNumber);
             return pageNumber - 1;
           });
-          return {
-            text: JSON.stringify({ pages: indices.map(pageIndex => ({ pageIndex, notes: `Notes simulées page ${pageIndex + 1}.` })) }),
-            threadId: "long-pdf-visual-test",
-          };
+          assert.equal(indices.length, pageCount);
+          return { text: "Document prêt.", threadId: "long-pdf-seeded-thread" };
         }
         seedCalls++;
         assert.equal(readPreparation(docId).status, "preparing", "not ready until all pages reach the chat");
         for (let number = 1; number <= pageCount; number++) {
           assert.ok(args.input.includes(`PAGE PDF ${number} / ${pageCount}`));
           assert.ok(args.input.includes(`TEMOIN ${number * 17}`));
-          assert.ok(args.input.includes(`Notes simulées page ${number}.`));
+
         }
         return { text: "Document prêt.", threadId: "long-pdf-seeded-thread" };
       },
@@ -95,7 +93,7 @@ async function main() {
     const proof = {
       status: "PASS", pages: pageCount, fileBytes: bytes.length,
       extractAndUploadMs: extractedAt - startedAt, totalWithRenderingMs: Date.now() - startedAt,
-      renderedPages: pagesSeen.length, simulatedVisualBatches: Math.ceil(pageCount / 3),
+      renderedPages: pagesSeen.length, initialContextCalls: seedCalls,
       chatSeeds: seedCalls, externalAICalls: 0, malformedPdfRejected: true,
     };
     fs.writeFileSync("work/long-pdf-result.json", JSON.stringify(proof, null, 2));

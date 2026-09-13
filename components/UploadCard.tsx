@@ -232,8 +232,8 @@ export default function UploadCard() {
       </h1>
 
       <p className="mt-7 max-w-2xl text-[15px] leading-[1.65] text-[var(--ink-700)]">
-        Déposez votre PDF. Une préparation initiale examine chaque page,
-        son texte et ses figures. Ensuite, lisez à gauche et discutez à droite.
+        Déposez votre PDF. Le texte intégral est indexé sur votre Mac. Les pages contenant des visuels
+        sont conservées en images, puis chargées avec le texte dans le chat. Ensuite, lisez à gauche et discutez à droite.
         Le chat suit votre page et les actions sur les passages restent à votre demande.
       </p>
 
@@ -315,11 +315,11 @@ export default function UploadCard() {
 
       {progress && (
         <div role="status" aria-live="polite" className="mt-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-4">
-          <p className="text-sm font-medium text-[var(--ink-900)]">Préparation : {progress.completedPages} / {progress.totalPages} pages examinées</p>
-          <progress aria-label="Pages examinées" className="mt-3 h-2 w-full accent-[var(--accent-600)]" value={progress.completedPages} max={Math.max(progress.totalPages, 1)} />
+          <p className="text-sm font-medium text-[var(--ink-900)]">Préparation : {progress.completedPages} / {progress.totalPages} pages indexées</p>
+          <progress aria-label="Pages indexées" className="mt-3 h-2 w-full accent-[var(--accent-600)]" value={progress.completedPages} max={Math.max(progress.totalPages, 1)} />
           <p className="mt-2 text-xs leading-relaxed text-[var(--ink-500)]">
-            {progress.status === "preparing" ? progress.phase === "context" ? "Toutes les pages sont examinées. Installation du contexte complet dans le chat…" : `Lecture du texte et des figures${progress.activePages?.length ? `, pages ${progress.activePages.join(", ")}` : ""}. Le lecteur s’ouvrira automatiquement une fois toutes les pages examinées.` : "Les pages déjà préparées sont conservées."}
-            {" "}La durée dépend du document et du service IA. Les éléments illisibles sont signalés dans les notes.
+            {progress.status === "preparing" ? progress.phase === "context" ? "Texte et images prêts. Chargement unique du contexte dans le chat…" : `Indexation locale du texte et des images${progress.activePages?.length ? `, pages ${progress.activePages.join(", ")}` : ""}. Le lecteur s’ouvrira automatiquement une fois toutes les pages indexées.` : "Les pages déjà préparées sont conservées."}
+            {" "}La durée dépend du document et du service IA. Les images originales restent disponibles pour interpréter les graphiques et les scans.
           </p>
           {progress.status === "preparing" && preparationId && <button type="button" className="mt-3 text-xs text-[var(--ink-600)] underline" onClick={async () => {
             await fetch(`/api/preparation/${preparationId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });

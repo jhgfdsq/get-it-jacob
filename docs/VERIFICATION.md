@@ -1,6 +1,6 @@
 # Contrôle de l’édition personnelle
 
-Contrôles du 13 septembre 2026 sur Mac Apple Silicon. Ils portent sur des documents fictifs de test, sans document personnel.
+Contrôles du 13 septembre 2026 sur Mac Apple Silicon. Les contrôles initiaux portent sur des documents fictifs. La mise à jour 1.0.2 inclut aussi un essai sur le PDF signalé par l’utilisateur, conservé uniquement dans les données locales ignorées par Git.
 
 - Compilation production Next.js et TypeScript réussies.
 - ESLint : zéro erreur. Des avertissements non bloquants restent dans le code hérité.
@@ -23,3 +23,22 @@ Le lancement d’origine réutilisait l’exécutable de l’application princip
 La limite de 150 pages a été retirée. Régression avec PDF réel de 205 pages : import, extraction complète, rendu de 205 pages et préparation en 69 lots avec IA simulée, contexte complet avant ready. Aucun appel IA externe dans ce test. Un PDF corrompu reste refusé. La limite de 80 Mo par fichier reste indépendante du nombre de pages.
 
 Le contrôle natif de 205 pages vérifie aussi l’admission par l’interface installable, la progression de 205 pages, puis annule explicitement la préparation de test. Les tests du chat natif utilisent un PDF distinct de 3 pages avec une vraie réponse IA.
+
+
+## Mise à jour 1.0.2 : import local et contexte unique
+
+Le blocage sur Situational Awareness provenait du parcours antérieur : rendu de toutes les pages en PNG, puis appels IA successifs par trois pages pour rédiger des notes exhaustives. Pour 165 pages, cela représentait 55 appels avant le chargement final. Les tests antérieurs de 205 pages simulaient l’IA et ne mesuraient donc pas cette latence réelle.
+
+Le nouveau parcours conserve tout le texte extrait, inspecte localement les opérations de dessin du PDF, rend uniquement les pages visuelles en JPEG qualité 90 à 2200 pixels, puis initialise une conversation avec le texte complet et les images sources. Aucune note IA par page n’est demandée. Le statut « indexées » désigne une couverture des sources et ne prétend pas que toutes les images ont fait l’objet d’une interprétation exhaustive.
+
+Essai réel du 13 septembre 2026 sur le fichier de 165 pages et 21 371 840 octets : 314 998 caractères extraits, 37 pages contenant des visuels et 128 pages sans rendu nécessaire. Inspection seule : 1,54 seconde. Inspection et rendu local des images : 14,05 secondes. Les 37 JPEG occupent 14,23 Mo, contre 24,97 Mo en PNG. Les chiffres et légendes du graphique de la page 8 ont été contrôlés sur le rendu JPEG.
+
+Import complet dans une bibliothèque isolée, avec un nouveau document et un nouveau préfixe de contexte : 37,899 secondes, dont 19,085 secondes pour l’unique chargement IA. Le même parcours utilisant des PNG avait pris 78,659 secondes. Il s’agit de mesures ponctuelles, dépendantes du réseau, du modèle et du contenu. Les 37 pages visuelles ne désignent pas 37 graphiques sémantiques.
+
+Une question réelle sur le graphique de la page affichée a retrouvé la référence GPT-4, l’échelle logarithmique et la bande de projection bleue à partir du contexte déjà initialisé. Réponse en 46,873 secondes sur ce document long : la correction de l’import ne garantit pas une réponse immédiate sur toutes les questions. L’assertion du test a été corrigée pour accepter le trait d’union insécable de la réponse, puis la réponse persistée a été vérifiée sans nouvel appel.
+
+Régressions : classification de pages textuelles, images, scans, tableaux, courbes vectorielles et traits simples, rendu JPEG, annulation, suppression, reprise après échec du chargement initial, migration des conversations anciennes et correspondance image/page. PDF de 205 pages visuelles : tous les textes et 205 images dans un seul contexte simulé, fichier corrompu toujours refusé. TypeScript et compilation production réussis, ESLint zéro erreur (20 avertissements hérités).
+
+Contrôle du paquet 1.0.2 en Chrome headless : préparation du PDF fictif de trois pages en 7,380 secondes, réponse correcte à la question sur le scan en 4,832 secondes, zéro erreur navigateur et zéro appel IA à la réouverture. NSWorkspace ne détecte aucun processus de test ayant une icône Dock. Le seul serveur du paquet est un helper interne avec politique accessory.
+
+Application 1.0.2 installée dans Applications sans ouverture. Reprise du document utilisateur interrompu : 165 pages prêtes en 33,265 secondes, 37 pages visuelles, messages existants préservés, ancien état sauvegardé. Le lecteur est accessible après la reprise, sans appel IA spontané et sans application Dock de test.

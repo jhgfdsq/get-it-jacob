@@ -59,7 +59,7 @@ class FakeCodex extends EventEmitter {
 async function main() {
   fs.mkdirSync("work", { recursive: true });
   process.env.GETIT_DATA_DIR = fs.mkdtempSync(path.resolve("work/chat-test-"));
-  const { DocumentAIServer, shutdownDocumentAI, primePreparedChat } = await import("../lib/document-ai");
+  const { DocumentAIServer, shutdownDocumentAI, primePreparedChat, DOCUMENT_CONTEXT_VERSION } = await import("../lib/document-ai");
   const fake = new FakeCodex();
   let launches = 0;
   const server = new DocumentAIServer(() => { launches++; return fake as unknown as ChildProcessWithoutNullStreams; });
@@ -95,7 +95,7 @@ async function main() {
 
     const { saveDoc } = await import("../lib/store");
     const { docDir, pdfPath } = await import("../lib/paths");
-    const { loadWorkContext } = await import("../lib/work-context");
+    const { loadWorkContext, saveWorkContext } = await import("../lib/work-context");
     const route = await import("../app/api/chat/[docId]/route");
     const docId = "test-chat-document";
     const ctx = { params: Promise.resolve({ docId }) };
@@ -148,17 +148,60 @@ async function main() {
     assert.equal(afterFailure.messages.length, 4, "failed turn does not persist orphan message");
     assert.equal(afterFailure.codexThreadId, undefined, "ambiguous failed thread not reused");
     fake.fail = false;
+    // A legacy native context is never mistaken for the new image-backed seed.
+    const legacy = loadWorkContext(docId);
+    legacy.chats[0].codexThreadId = "old-v1-thread";
+    legacy.chats[0].threadProvider = "codex";
+    legacy.chats[0].documentContextVersion = 1;
+    saveWorkContext(legacy);
     const beforePrime = fake.requests.filter((request) => request.method === "turn/start").length;
-    await primePreparedChat(docId, "ALL DOCUMENT TEXT AND VISUAL NOTES");
+    await primePreparedChat(docId, "ALL DOCUMENT TEXT AND ORIGINAL PAGE IMAGES", undefined, ["/test/page-3.png"]);
     const primedChat = loadWorkContext(docId).chats[0];
     assert(primedChat.codexThreadId);
+    assert.equal(primedChat.documentContextVersion, DOCUMENT_CONTEXT_VERSION);
+    assert.equal(loadWorkContext(docId).chats[1].messages.length, 4, "legacy conversation retained unchanged");
+    assert.equal(fake.requests.filter((request) => request.method === "turn/start").at(-1)!.params!.effort, "low", "seed only acknowledges source loading with minimal reasoning");
+    const seedInput = fake.requests.filter((request) => request.method === "turn/start").at(-1)!.params!.input as Array<{ text?: string; type: string; path?: string }>;
+    assert.deepEqual(seedInput[1], { type: "localImage", path: "/test/page-3.png" });
+    assert.match(seedInput[0].text!, /Do not summarize/);
     assert.equal(primedChat.messages.length, 0, "seed acknowledgment never pollutes reader chat");
-    await primePreparedChat(docId, "ALL DOCUMENT TEXT AND VISUAL NOTES");
+    await primePreparedChat(docId, "ALL DOCUMENT TEXT AND ORIGINAL PAGE IMAGES", undefined, ["/test/page-3.png"]);
     assert.equal(fake.requests.filter((request) => request.method === "turn/start").length, beforePrime + 1, "interrupted import reuses persisted seed");
     const seededResponse = decode(await (await post({ ...payload, chatId: primedChat.id })).text());
     assert.equal(seededResponse.at(-1).timing.resumed, true, "first reader message resumes preloaded context");
     const seededInput = (fake.requests.filter((request) => request.method === "turn/start").at(-1)!.params!.input as Array<{ text: string }>)[0].text;
     assert.doesNotMatch(seededInput, /ALL DOCUMENT TEXT|ORIGINAL PAGE/);
+    assert.equal((fake.requests.filter((request) => request.method === "turn/start").at(-1)!.params!.input as unknown[]).length, 1, "images are not resent on resumed thread");
+    const migrated = decode(await (await post(payload)).text());
+    assert.equal(migrated.at(-1).timing.resumed, false, "legacy thread migrates explicitly to version 2");
+    const migratedInput = (fake.requests.filter((request) => request.method === "turn/start").at(-1)!.params!.input as Array<{ text: string }>)[0].text;
+    assert.match(migratedInput, /PREVIOUS CONVERSATION/);
+    assert.match(migratedInput, /Bonjour Jacob é/);
+    const migratedChat = loadWorkContext(docId).chats.find(chat => chat.id === chatId)!;
+    assert.equal(migratedChat.messages.length, 6, "migration preserves old messages and appends current exchange");
+    assert.equal(migratedChat.documentContextVersion, DOCUMENT_CONTEXT_VERSION);
+    // New conversations carry original visual page images exactly once.
+    const imageDir = path.join(docDir(docId), "pages");
+    fs.mkdirSync(imageDir, { recursive: true });
+    const visualPath = path.join(imageDir, "page-3.png");
+    fs.writeFileSync(visualPath, "test-image");
+    fs.writeFileSync(path.join(docDir(docId), "preparation.json"), JSON.stringify({ version: 2, status: "ready", completedPages: 3, totalPages: 3, visualPages: [2], pages: [0, 1, 2].map((pageIndex) => ({ pageIndex, notes: "Local source indexed", kind: pageIndex === 2 ? "visual" : "text" })), updatedAt: Date.now() }));
+    const preparation = await import("../lib/preparation");
+    assert.deepEqual(preparation.getPreparedImagePaths(docId, 2), [visualPath]);
+    assert.deepEqual(preparation.getPreparedImagePaths(docId, 1), []);
+    assert.match(preparation.buildPreparedContext(docId, 2), /IN ORDER, to PDF pages: 3/);
+    assert.match(preparation.buildPreparedContext(docId, 1), /IN ORDER, to PDF pages: none/);
+    assert.doesNotMatch(preparation.buildPreparedContext(docId, 1), /IMAGE ORIGINALE JOINTE POUR CETTE PAGE/);
+    const imageChat = await (await post({ action: "create" })).json();
+    const imageEvents = decode(await (await post({ ...payload, chatId: imageChat.chat.id })).text());
+    assert.equal(imageEvents.at(-1).type, "done");
+    const imageTurn = fake.requests.filter((request) => request.method === "turn/start").at(-1)!.params!.input as Array<{ type: string; path?: string; text?: string }>;
+    assert.deepEqual(imageTurn[1], { type: "localImage", path: visualPath });
+    assert.match(imageTurn[0].text!, /ORIGINAL PAGE 1/);
+    assert.match(imageTurn[0].text!, /ORIGINAL PAGE 3/);
+    const imageResume = decode(await (await post({ ...payload, chatId: imageChat.chat.id, pageIndex: 2 })).text());
+    assert.equal(imageResume.at(-1).timing.resumed, true);
+    assert.equal((fake.requests.filter((request) => request.method === "turn/start").at(-1)!.params!.input as unknown[]).length, 1, "original images stay in native context across turns");
     console.log("PASS: warm native protocol, real partial events, Unicode, page/image inputs, resume, cancellation, concurrency, no retries, HTTP validation, preparation gate, SSE, context reuse, explicit page priority, persistence and failure recovery.");
   } finally { shutdownDocumentAI(); fs.rmSync(process.env.GETIT_DATA_DIR!, { recursive: true, force: true }); }
 }

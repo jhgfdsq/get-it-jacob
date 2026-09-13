@@ -4,7 +4,7 @@
 
 ## Utilisation
 
-Ouvrir **Get It Jacob.app**, puis déposer un PDF. Le lecteur et son serveur interne ne présentent qu’une seule icône dans le Dock. La préparation examine chaque page sous forme de texte et d’image, conserve les notes visuelles, puis initialise la première conversation avec le contexte complet. Le lecteur s’ouvre lorsque tout est prêt. Les scans sans texte sont acceptés.
+Ouvrir **Get It Jacob.app**, puis déposer un PDF. Le lecteur et son serveur interne ne présentent qu’une seule icône dans le Dock. La préparation extrait le texte intégral sur le Mac, repère localement les pages contenant des images ou des tracés et ne convertit en images que ces pages. Un seul chargement initialise ensuite la première conversation avec tout le texte et les images sources, dans l’ordre de leurs pages. Le lecteur s’ouvre lorsque tout est prêt. Les scans sans texte sont acceptés.
 
 Le numéro de la page visible est joint à chaque question. Une page mentionnée explicitement dans la question ou un passage sélectionné est prioritaire. La conversation existante est reprise entre les messages et après redémarrage.
 
@@ -14,15 +14,15 @@ Après l’import, le défilement, la sélection et la réouverture ne déclench
 
 ## Ce qui est conservé
 
-Les PDF, leur texte original intégral, les notes de lecture de chaque page, les conversations, les visuels et les réglages résident dans `~/Library/Application Support/get-it-jacob`. Cette bibliothèque est indépendante de celle du logiciel d’origine.
+Les PDF, leur texte original intégral, l’index local et les images sources des pages visuelles, les conversations, les visuels et les réglages résident dans `~/Library/Application Support/get-it-jacob`. Cette bibliothèque est indépendante de celle du logiciel d’origine.
 
 La connexion existante est utilisée sans recopier ses identifiants dans le projet. Le moteur de lecture dispose d’un dossier de configuration et de conversation distinct, sans outils, plugins ou connecteurs de l’environnement de codage. Aucun moteur ancien n’est téléchargé automatiquement. Le moteur inclus dans cette construction locale est vérifié avant assemblage.
 
 ## Limites explicites
 
 - Aucune limite imposée au nombre de pages, y compris au-delà de 200 pages. Chaque fichier peut peser jusqu’à 80 Mo. Un document très dense peut dépasser la fenêtre de contexte du modèle, auquel cas la préparation indique une erreur au lieu de masquer des pages manquantes.
-- La préparation initiale utilise l’IA et l’abonnement. Les grands PDF peuvent prendre plusieurs minutes. Aucune durée universelle n’est garantie.
-- Les notes visuelles sont des interprétations et peuvent contenir des erreurs. Les chiffres peu lisibles sont signalés. Le PDF original reste la référence.
+- L’indexation est locale. Le chargement initial du contexte utilise l’IA et l’abonnement une fois par document. Sa durée dépend du volume et du service. Aucune durée universelle n’est garantie.
+- Les images sont fournies comme sources, sans rédiger de commentaire IA pour chaque page à l’import. Leur interprétation se fait dans le chat et peut contenir des erreurs. Le PDF original reste la référence.
 - Un scan sans couche texte peut être discuté via la page courante, mais son texte ne peut pas être surligné dans le lecteur.
 - Le contexte de conversation est réutilisé. Cela ne signifie pas que les messages suivants consomment zéro token.
 - Cette construction personnelle est testée sur ce Mac Apple Silicon, avec signature locale. Elle n’est pas une distribution publique notarifiée pour tous les Mac.
