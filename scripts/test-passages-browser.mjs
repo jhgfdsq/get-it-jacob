@@ -22,11 +22,13 @@ async function start(){
 }
 const draftPanel=()=>page.getByLabel('Passages joints au brouillon',{exact:true});
 async function select(index,needle){
+ const count=await draftPanel().locator("details").count();
  await page.locator(`[data-page="${index}"]`).evaluate(el=>el.scrollIntoView({block:'center'}));
  const text=page.locator(`[data-page="${index}"] .pdf-selectable-text span`).filter({hasText:needle}).first();await text.scrollIntoViewIfNeeded();const b=await text.boundingBox();assert(b);
  await page.mouse.move(b.x+1,b.y+b.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width-1,b.y+b.height/2,{steps:15});await page.mouse.up();
  await page.waitForFunction(()=>document.querySelector('[title="Ajouter le texte sélectionné au chat"]')?.disabled===false);
  await page.getByRole('button',{name:'Discuter',exact:true}).click();
+ await page.waitForFunction(n=>document.querySelectorAll('[aria-label="Passages joints au brouillon"] details').length===n,count+1);
 }
 async function savedCount(n){for(let i=0;i<60;i++){const j=await(await fetch(base+'/api/chat/'+docId+'/drafts')).json();if(j.drafts['chat-a']?.passages?.length===n)return j;await page.waitForTimeout(50);}throw Error('Draft count not saved '+n);}
 try{
