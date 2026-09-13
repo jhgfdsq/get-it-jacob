@@ -74,13 +74,13 @@ try {
   await page.screenshot({ path: path.join(folder, '02-selection-zoom.png') });
   assert.equal(await page.evaluate(() => window.__sent.length), 0, 'selection sends no AI');
   await page.getByRole('button', { name: 'Discuter', exact: true }).click();
-  await page.getByText('Passage sélectionné · page 2').waitFor();
+  await page.getByText('Passage 1 · page 2').waitFor();
   assert.equal(await page.evaluate(() => window.__sent.length), 0, 'explain only drafts until send');
   await page.getByRole('textbox', { name: '' }).last().fill('Développe ce passage.');
   await page.getByRole('button', { name: 'Envoyer (Entrée)' }).click();
   await page.getByText('Premiers mots visibles', { exact: true }).waitFor();
   assert(await page.getByRole('button', { name: 'Arrêter', exact: true }).isVisible(), 'partial text shown while still streaming');
-  const first = await page.evaluate(() => window.__sent[0]); assert.equal(first.pageIndex, 1); assert(first.selection.length > 4);
+  const first = await page.evaluate(() => window.__sent[0]); assert.equal(first.pageIndex, 1); assert(first.passages[0].selection.length > 4); assert.equal(first.passages[0].pageIndex, 1);
   await scrollTo(2);
   await page.getByText('Premiers mots visibles puis réponse complète.', { exact: true }).waitFor();
   assert.equal(await page.getByText('Premiers mots visibles puis réponse complète.', { exact: true }).count(), 1, 'cumulative stream has no duplicated prefixes');

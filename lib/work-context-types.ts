@@ -8,6 +8,7 @@
 
 import type { ProviderName } from "./provider-types";
 import type { CaptureAttachment } from "./capture-types";
+import type { ChatPassage } from "./chat-passages";
 
 export type ChatMessage = {
   role: "user" | "assistant";
@@ -15,7 +16,9 @@ export type ChatMessage = {
   ts: number;
   /** Zero-based PDF page captured when this message was sent. */
   pageIndex?: number;
-  /** User-selected source passage, if any. */
+  /** User-selected excerpts, each retaining its own source page. */
+  passages?: ChatPassage[];
+  /** Legacy single passage, retained when reading existing messages. */
   selection?: string;
   /** User-validated source crops sent together with this message. */
   captures?: CaptureAttachment[];

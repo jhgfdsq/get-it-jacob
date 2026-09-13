@@ -54,8 +54,8 @@ try{
  await page.waitForFunction(()=>document.querySelector('[title="Ajouter le texte sélectionné au chat"]')?.disabled===false);
  assert(await page.getByRole('button',{name:'Créer un visuel',exact:true}).isEnabled());
  await page.getByRole('button',{name:'Créer un visuel',exact:true}).click();await page.getByRole('menuitem',{name:'Graphique',exact:true}).waitFor();await page.keyboard.press('Escape');
- await page.getByRole('button',{name:'Discuter',exact:true}).click();await page.getByText('Passage sélectionné · page 2').waitFor();
- assert.equal(sent.length,0);await page.getByRole('button',{name:'Retirer le passage',exact:true}).click();
+ await page.getByRole('button',{name:'Discuter',exact:true}).click();await page.getByText('Passage 1 · page 2').waitFor();
+ assert.equal(sent.length,0);await page.getByRole('button',{name:'Retirer le passage 1',exact:true}).click();
  const crop=async(index,rect,resize=false)=>{
   await scrollTo(index);await page.getByRole('button',{name:'Capturer une zone',exact:true}).click();
   await page.locator(`[data-page="${index}"]`).evaluate(el=>el.scrollIntoView({block:'center'}));

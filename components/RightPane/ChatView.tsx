@@ -14,17 +14,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Send, MessageSquare, RefreshCw, X, ImagePlus } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { MAX_PASSAGES, MAX_PASSAGE_CHARS, MAX_TOTAL_PASSAGE_CHARS, type ChatPassage } from "@/lib/chat-passages";
 import type { ChatThread } from "@/lib/work-context-types";
 import { MAX_CAPTURES_PER_MESSAGE, type CaptureAttachment, type CaptureSource } from "@/lib/capture-types";
 
 
 export type SelectionRequest = { id: number; action: "discuss" | "explain"; text: string; pageIndex: number };
 export type CaptureRequest = CaptureSource & { id: string };
-type Snapshot = { pageIndex: number; selection?: string; captures?: CaptureAttachment[]; requestId?: string };
+type Snapshot = { pageIndex: number; selection?: string; passages?: ChatPassage[]; captures?: CaptureAttachment[]; requestId?: string };
 type PendingCapture = { key: string; source?: CaptureSource; attachment?: CaptureAttachment; busy?: boolean; error?: string };
-type Draft = { text: string; attached: Snapshot | null; captures: PendingCapture[] };
+type Draft = { text: string; passages: ChatPassage[]; captures: PendingCapture[] };
 type PendingTurn = Snapshot & { chatId: string; message: string; error?: string };
-const emptyDraft = (): Draft => ({ text: "", attached: null, captures: [] });
+const emptyDraft = (): Draft => ({ text: "", passages: [], captures: [] });
 type Props = { chatListVisible?: boolean; docId: string; pageIndex: number; selectionRequest?: SelectionRequest | null; captureRequests?: CaptureRequest[]; onCapturesConsumed?: (ids: string[]) => void };
 
 export default function ChatView({ chatListVisible = true, docId, pageIndex, selectionRequest, captureRequests, onCapturesConsumed }: Props) {
@@ -34,11 +35,10 @@ export default function ChatView({ chatListVisible = true, docId, pageIndex, sel
   const draftKey = activeId ?? "new";
   const currentDraft = drafts[draftKey] ?? emptyDraft();
   const draft = currentDraft.text;
-  const attached = currentDraft.attached;
+  const passages = currentDraft.passages;
   const captures = currentDraft.captures;
   const patchDraft = useCallback((key: string, update: (value: Draft) => Draft) => setDrafts(all => ({ ...all, [key]: update(all[key] ?? emptyDraft()) })), []);
   const setDraft = (text: string) => patchDraft(draftKey, value => ({ ...value, text }));
-  const setAttached = (attached: Snapshot | null) => patchDraft(draftKey, value => ({ ...value, attached }));
   const [preview, setPreview] = useState<CaptureAttachment | null>(null);
   const seenCaptures = useRef(new Set<string>());
   const uploading = useRef(false);
@@ -103,9 +103,17 @@ export default function ChatView({ chatListVisible = true, docId, pageIndex, sel
   useEffect(() => {
     if (!selectionRequest || chats === null || seenSelection.current === selectionRequest.id) return;
     seenSelection.current = selectionRequest.id;
-    patchDraft(draftKey, value => ({ ...value, attached: { pageIndex: selectionRequest.pageIndex, selection: selectionRequest.text }, text: value.text || (selectionRequest.action === "explain" ? "Explique ce passage en détail, avec des exemples et le contexte du document." : "") }));
+    const selection = selectionRequest.text.trim();
+    if (!selection) return;
+    const existing = drafts[draftKey]?.passages ?? [];
+    if (existing.length >= MAX_PASSAGES || selection.length > MAX_PASSAGE_CHARS || existing.reduce((n, p) => n + p.selection.length, selection.length) > MAX_TOTAL_PASSAGE_CHARS) {
+      setError("Le contexte sélectionné est trop volumineux. Retirez quelques passages avant d’en ajouter.");
+      return;
+    }
+    setError(null);
+    patchDraft(draftKey, value => ({ ...value, passages: [...value.passages, { pageIndex: selectionRequest.pageIndex, selection }], text: value.text || (selectionRequest.action === "explain" ? "Explique ce passage en détail, avec des exemples et le contexte du document." : "") }));
     draftRef.current?.focus();
-  }, [selectionRequest, chats, draftKey, patchDraft]);
+  }, [selectionRequest, chats, draftKey, drafts, patchDraft]);
 
   useEffect(() => {
     if (chats === null || !captureRequests?.length) return;
@@ -176,7 +184,7 @@ export default function ChatView({ chatListVisible = true, docId, pageIndex, sel
     let delivered = false;
     try {
       const r = await fetch(`/api/chat/${docId}`, { method: "POST", signal: controller.signal,
-        headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "send", chatId, message, pageIndex: snapshot.pageIndex, selection: snapshot.selection, captureIds: snapshot.captures?.map(c => c.id) ?? [], requestId: snapshot.requestId }) });
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "send", chatId, message, pageIndex: snapshot.pageIndex, selection: snapshot.selection, passages: snapshot.passages, captureIds: snapshot.captures?.map(c => c.id) ?? [], requestId: snapshot.requestId }) });
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error ?? `Erreur ${r.status}`); }
       if (!r.body) throw new Error("Flux de réponse indisponible.");
       const reader = r.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let done = false;
@@ -211,16 +219,16 @@ export default function ChatView({ chatListVisible = true, docId, pageIndex, sel
     const message = draft.trim(); if (!message || busyRef.current || outbox[draftKey] || captures.length > MAX_CAPTURES_PER_MESSAGE || captures.some(c => !c.attachment)) return;
     busyRef.current = true; setSending(true); setError(null);
     // Snapshot before any asynchronous creation: scrolling afterwards never changes this turn.
-    const snapshot: Snapshot = { ...(attached ?? { pageIndex }), captures: captures.map(c => c.attachment!), requestId: crypto.randomUUID() };
+    const snapshot: Snapshot = { pageIndex, passages: [...passages], captures: captures.map(c => c.attachment!), requestId: crypto.randomUUID() };
     const sentKeys = new Set(captures.map(c => c.key));
     try {
       const chatId = activeId ?? await makeChat();
       const user = { role: "user" as const, content: message, ts: Date.now(), ...snapshot };
       setChats((prev) => prev?.map((c) => c.id === chatId ? { ...c, messages: [...c.messages, user], updatedAt: user.ts } : c) ?? []);
-      patchDraft(chatId, value => ({ ...value, text: value.text === draft ? "" : value.text, attached: value.attached === attached ? null : value.attached, captures: value.captures.filter(c => !sentKeys.has(c.key)) })); await deliver(chatId, message, snapshot);
+      patchDraft(chatId, value => ({ ...value, text: value.text === draft ? "" : value.text, passages: value.passages.filter(p => !passages.includes(p)), captures: value.captures.filter(c => !sentKeys.has(c.key)) })); await deliver(chatId, message, snapshot);
     } catch (e) { setError((e as Error).message); setSending(false); busyRef.current = false; }
-  }, [draft, attached, captures, outbox, draftKey, patchDraft, pageIndex, activeId, makeChat, deliver]);
-  const retry = () => { if (!failed || busyRef.current) return; busyRef.current = true; void deliver(failed.chatId, failed.message, { pageIndex: failed.pageIndex, selection: failed.selection, captures: failed.captures, requestId: failed.requestId }); };
+  }, [draft, passages, captures, outbox, draftKey, patchDraft, pageIndex, activeId, makeChat, deliver]);
+  const retry = () => { if (!failed || busyRef.current) return; busyRef.current = true; void deliver(failed.chatId, failed.message, { pageIndex: failed.pageIndex, selection: failed.selection, passages: failed.passages, captures: failed.captures, requestId: failed.requestId }); };
 
   if (chats === null) {
     return (
@@ -298,7 +306,7 @@ export default function ChatView({ chatListVisible = true, docId, pageIndex, sel
               </p>
             )}
             {active.messages.map((m, i) => (
-              <div key={i}>{m.role === "user" && m.pageIndex !== undefined && <p className="mb-1 text-right text-[10px] text-[var(--ink-400)]">Page {m.pageIndex + 1} du PDF</p>}{m.captures?.length ? <div className="mb-2 flex flex-wrap justify-end gap-2">{m.captures.map(c => <CaptureThumb key={c.id} capture={c} onPreview={() => setPreview(c)} />)}</div> : null}<Bubble role={m.role} content={m.content} /></div>
+              <div key={i}>{m.role === "user" && m.pageIndex !== undefined && <p className="mb-1 text-right text-[10px] text-[var(--ink-400)]">Page {m.pageIndex + 1} du PDF</p>}{m.passages?.length ? <div className="mb-2 space-y-1">{m.passages.map((passage, index) => <details key={index} className="rounded-md bg-[var(--surface-sunken)] px-2 py-1 text-[11px] text-[var(--ink-700)]"><summary className="cursor-pointer">Passage {index + 1} · page {passage.pageIndex + 1}</summary><p className="mt-1 whitespace-pre-wrap">{passage.selection}</p></details>)}</div> : null}{m.captures?.length ? <div className="mb-2 flex flex-wrap justify-end gap-2">{m.captures.map(c => <CaptureThumb key={c.id} capture={c} onPreview={() => setPreview(c)} />)}</div> : null}<Bubble role={m.role} content={m.content} /></div>
             ))}
             {sendingChatId === active.id && (partial || sending) && <Bubble role="assistant" content={partial || status || "…"} pulsing={!partial} />}
             {failed && failed.chatId === active.id && !sending && (
@@ -316,7 +324,7 @@ export default function ChatView({ chatListVisible = true, docId, pageIndex, sel
                   <RefreshCw className="h-3 w-3" /> Réessayer (page {failed.pageIndex + 1})
                 </button>
                 <button type="button" className="text-xs underline text-[var(--ink-600)]" onClick={() => {
-                  patchDraft(failed.chatId, value => ({ ...value, text: [failed.message, value.text].filter(Boolean).join("\n\n"), attached: { pageIndex: failed.pageIndex, selection: failed.selection }, captures: [...(failed.captures ?? []).filter(c => !value.captures.some(item => item.attachment?.id === c.id)).map(c => ({ key: c.id, attachment: c })), ...value.captures] }));
+                  patchDraft(failed.chatId, value => ({ ...value, text: [failed.message, value.text].filter(Boolean).join("\n\n"), passages: [...(failed.passages ?? []), ...value.passages], captures: [...(failed.captures ?? []).filter(c => !value.captures.some(item => item.attachment?.id === c.id)).map(c => ({ key: c.id, attachment: c })), ...value.captures] }));
                   setOutbox(all => { const next = { ...all }; delete next[failed.chatId]; return next; });
                 }}>Reprendre dans le brouillon</button>
               </div>
@@ -332,7 +340,13 @@ export default function ChatView({ chatListVisible = true, docId, pageIndex, sel
           className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] p-3"
         >
           <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--ink-500)]"><span data-testid="page-context">Contexte : page {pageIndex + 1} du PDF</span>{sending && <span className="ml-auto">{status || "Réponse en cours…"}</span>}</div>
-          {attached?.selection && <div className="mb-2 rounded-md bg-[var(--surface-sunken)] p-2 text-[11px] text-[var(--ink-700)]"><button type="button" onClick={() => setAttached(null)} className="float-right px-1" aria-label="Retirer le passage">×</button><span>Passage sélectionné · page {attached.pageIndex + 1}</span><p className="mt-1 line-clamp-3">{attached.selection}</p></div>}
+          {passages.length > 0 && <div className="mb-2 max-h-40 space-y-2 overflow-y-auto" aria-label="Passages joints au brouillon">
+            {passages.map((passage, index) => <div key={index} className="rounded-md bg-[var(--surface-sunken)] p-2 text-[11px] text-[var(--ink-700)]">
+              <button type="button" onClick={() => patchDraft(draftKey, value => ({ ...value, passages: value.passages.filter((_, i) => i !== index) }))} className="float-right px-1" aria-label={`Retirer le passage ${index + 1}`}>×</button>
+              <details><summary className="cursor-pointer">Passage {index + 1} · page {passage.pageIndex + 1}</summary><p className="mt-1 whitespace-pre-wrap">{passage.selection}</p></details>
+              <p className="mt-1 line-clamp-2">{passage.selection}</p>
+            </div>)}
+          </div>}
           {captures.length > 0 && <div className="mb-2 max-h-44 overflow-y-auto" aria-label="Captures jointes au brouillon" data-testid="capture-draft">
             <p className="mb-2 text-[11px] text-[var(--ink-500)]">{captures.length} capture{captures.length > 1 ? "s" : ""} · envoi avec votre prochaine question</p>
             <>{captures.length > MAX_CAPTURES_PER_MESSAGE && <p role="alert" className="mb-2 text-xs text-red-700">Joignez au maximum {MAX_CAPTURES_PER_MESSAGE} captures par message. Retirez les captures en trop avant l’envoi.</p>}</><div className="flex flex-wrap gap-2">{captures.map(item => <div key={item.key} className="relative">

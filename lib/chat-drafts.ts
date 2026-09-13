@@ -8,10 +8,12 @@ import { getDoc } from "./store";
 import { CaptureError, resolveCapture } from "./captures";
 import { MAX_CAPTURES_PER_MESSAGE, type CaptureAttachment } from "./capture-types";
 
+import { validateChatPassages, MAX_PASSAGE_CHARS, type ChatPassage } from "./chat-passages";
+
 export const MAX_DRAFT_BODY_BYTES = 1024 * 1024;
 type AttachedPassage = { pageIndex: number; selection?: string };
-type SavedDraft = { text: string; attached: AttachedPassage | null; captures: Array<{ key: string; attachment: CaptureAttachment }> };
-type SavedOutbox = { chatId: string; message: string; pageIndex: number; selection?: string; captures: CaptureAttachment[]; requestId: string; error?: string };
+type SavedDraft = { text: string; passages: ChatPassage[]; attached?: AttachedPassage | null; captures: Array<{ key: string; attachment: CaptureAttachment }> };
+type SavedOutbox = { chatId: string; message: string; pageIndex: number; passages: ChatPassage[]; selection?: string; captures: CaptureAttachment[]; requestId: string; error?: string };
 export type ChatDraftState = { drafts: Record<string, SavedDraft>; outbox: Record<string, SavedOutbox> };
 const validKey = (key: string) => /^[a-z0-9-]{1,64}$/.test(key);
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -25,9 +27,14 @@ function draftPath(docId: string) { return path.join(docDir(docId), "chat-drafts
 export function validateChatDrafts(docId: string, value: unknown): ChatDraftState {
   const doc = requireDocument(docId);
   if (!record(value) || !record(value.drafts) || !record(value.outbox)) fail();
+  const pages = new Set(doc.extracted.pages.map(page => page.pageIndex));
+  const passages = (source: unknown, legacy?: AttachedPassage) => {
+    try { return validateChatPassages(source, pages, legacy); }
+    catch (error) { fail(error instanceof Error ? error.message : undefined); }
+  };
   const passage = (source: unknown): AttachedPassage => {
     if (!record(source) || !Number.isInteger(source.pageIndex) || !doc.extracted.pages.some(page => page.pageIndex === source.pageIndex)) fail("La page du brouillon est invalide.");
-    if (source.selection != null && (typeof source.selection !== "string" || source.selection.length > 50_000)) fail("La sélection du brouillon est trop longue ou invalide.");
+    if (source.selection != null && (typeof source.selection !== "string" || source.selection.length > MAX_PASSAGE_CHARS)) fail("La sélection du brouillon est trop longue ou invalide.");
     return { pageIndex: source.pageIndex as number, ...(typeof source.selection === "string" ? { selection: source.selection } : {}) };
   };
   const attachment = (source: unknown): CaptureAttachment => {
@@ -48,14 +55,16 @@ export function validateChatDrafts(docId: string, value: unknown): ChatDraftStat
       captures.push({ key: item.key, attachment: attachment(item.attachment) });
     }
     if (captures.length > MAX_CAPTURES_PER_MESSAGE || new Set(captures.map(item => item.key)).size !== captures.length || new Set(captures.map(item => item.attachment.id)).size !== captures.length) fail("Le brouillon contient trop de captures ou des doublons.");
-    drafts[key] = { text: draft.text, attached: draft.attached == null ? null : passage(draft.attached), captures };
+    const legacy = draft.attached != null ? passage(draft.attached) : undefined;
+    drafts[key] = { text: draft.text, passages: passages(draft.passages, legacy), ...(legacy && !legacy.selection?.trim() ? { attached: legacy } : {}), captures };
   }
   for (const [key, entry] of Object.entries(value.outbox)) {
     if (!validKey(key) || !record(entry) || entry.chatId !== key || typeof entry.message !== "string" || !entry.message.trim() || entry.message.length > 100_000 || !Array.isArray(entry.captures) || entry.captures.length > MAX_CAPTURES_PER_MESSAGE || typeof entry.requestId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(entry.requestId)) fail("L’envoi en attente est invalide.");
     if (entry.error != null && (typeof entry.error !== "string" || entry.error.length > 4_000)) fail();
     const captures = entry.captures.map(attachment);
     if (new Set(captures.map(item => item.id)).size !== captures.length) fail("L’envoi contient une capture en double.");
-    outbox[key] = { chatId: key, message: entry.message, ...passage(entry), captures, requestId: entry.requestId, ...(typeof entry.error === "string" ? { error: entry.error } : {}) };
+    const legacy = passage(entry);
+    outbox[key] = { chatId: key, message: entry.message, pageIndex: legacy.pageIndex, passages: passages(entry.passages, legacy), captures, requestId: entry.requestId, ...(typeof entry.error === "string" ? { error: entry.error } : {}) };
   }
   return { drafts, outbox };
 }
