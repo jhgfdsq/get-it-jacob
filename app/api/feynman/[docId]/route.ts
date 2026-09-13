@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: no automatic knowledge evaluation.
 /**
  * Feynman method tool.
  *
@@ -32,7 +33,7 @@ import {
   type FeynmanSummaryResult,
 } from "@/lib/schemas-kg";
 import { loadKG } from "@/lib/kg";
-import { scheduleEvaluation } from "@/lib/kg-runner";
+
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -260,7 +261,7 @@ export async function POST(
       session.summary = summary;
       session.endedAt = Date.now();
       saveWorkContext(wc);
-      scheduleEvaluation(docId);
+
       return NextResponse.json({ session, done: true, summary, maxTurns: MAX_TURNS });
     }
 

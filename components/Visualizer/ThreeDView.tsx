@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -14,14 +15,14 @@ type Props = {
 export default function ThreeDView({ spec, onRuntimeError }: Props) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ spec: ThreeDSpec; message: string } | null>(null);
+  const error = failure?.spec === spec ? failure.message : null;
   const reportedRef = useRef(false);
 
   useEffect(() => {
-    setError(null);
     reportedRef.current = false;
     const reportError = (msg: string) => {
-      setError(msg);
+      setFailure({ spec, message: msg });
       if (!reportedRef.current) {
         reportedRef.current = true;
         onRuntimeError?.(msg);
@@ -168,7 +169,7 @@ export default function ThreeDView({ spec, onRuntimeError }: Props) {
       if (reportedRef.current) return;
       let renderable = 0;
       scene.traverse((obj) => {
-        const o = obj as any;
+        const o = obj as THREE.Object3D & { isMesh?: boolean; isLine?: boolean; isPoints?: boolean; isSprite?: boolean };
         if (
           o.isMesh ||
           o.isLine ||

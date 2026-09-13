@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: do not execute npm fallback binaries.
 /**
  * Codex account + rate-limit introspection.
  *
@@ -24,7 +25,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createRequire } from "node:module";
+
 import { spawn, spawnSync } from "node:child_process";
 
 // ── Binary path resolution (matches @openai/codex-sdk's findCodexPath) ──
@@ -62,19 +63,6 @@ function resolveCodexBinary(): string | null {
   const pkg = triple ? PLATFORM_PACKAGE_BY_TARGET[triple] : null;
   if (!triple || !pkg) return null;
   const exe = process.platform === "win32" ? "codex.exe" : "codex";
-
-  // 1) Walk node_modules like the SDK does
-  try {
-    const moduleRequire = createRequire(import.meta.url);
-    const codexPkgJson = moduleRequire.resolve("@openai/codex/package.json");
-    const codexRequire = createRequire(codexPkgJson);
-    const platformPkgJson = codexRequire.resolve(`${pkg}/package.json`);
-    const vendorRoot = path.join(path.dirname(platformPkgJson), "vendor");
-    const binaryPath = path.join(vendorRoot, triple, "codex", exe);
-    if (fs.existsSync(binaryPath)) return binaryPath;
-  } catch {
-    /* try the next strategy */
-  }
 
   // 2) Packaged Electron app: extraResources/codex-bin
   const resourcesPath = (process as unknown as { resourcesPath?: string }).resourcesPath;

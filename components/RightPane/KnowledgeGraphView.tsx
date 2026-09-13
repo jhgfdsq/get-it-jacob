@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
 /**
@@ -15,7 +16,7 @@
  * mounted so scores rise in (near) real time after a tool interaction.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, Sparkles, Network, X, Plus, Minus, Maximize2 } from "lucide-react";
 import type { KGEvaluation, KGNode, KGEdge, KnowledgeGraph } from "@/lib/kg-types";
@@ -679,7 +680,6 @@ function GraphCanvas({
   // ease so leaves visibly settle back to their nominal positions.
   const [dragLag, setDragLag] = useState({ x: 0, y: 0 });
   const dragLagRef = useRef(dragLag);
-  dragLagRef.current = dragLag;
   const setLag = useCallback((next: { x: number; y: number }) => {
     dragLagRef.current = next;
     setDragLag(next);
@@ -688,9 +688,11 @@ function GraphCanvas({
   // Mirror state into refs so the global drag handler reads fresh values
   // without resubscribing on every viewBox change.
   const viewRef = useRef(view);
-  viewRef.current = view;
   const sizeRef = useRef(size);
-  sizeRef.current = size;
+  useLayoutEffect(() => {
+    viewRef.current = view;
+    sizeRef.current = size;
+  }, [view, size]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -933,7 +935,7 @@ function GraphCanvas({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [onSelect, cancelMotion],
+    [onSelect, cancelMotion, setLag],
   );
 
   // Programmatic zoom (button controls) — anchor on viewport centre.

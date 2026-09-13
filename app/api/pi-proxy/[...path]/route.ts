@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 import { NextRequest, NextResponse } from "next/server";
 import { loadSettings } from "@/lib/settings-store";
 
@@ -18,7 +19,7 @@ function sanitizeResponseText(text: string, contentType: string | null): string 
         }
         return JSON.stringify(parsed);
       }
-    } catch (e) {
+    } catch {
       // Fail-safe: if JSON parsing fails, just return original text
     }
   } else if (contentType.includes("text/event-stream")) {
@@ -74,7 +75,7 @@ function sanitizeResponseText(text: string, contentType: string | null): string 
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const settings = loadSettings();
-  let url = settings.piUrl;
+  const url = settings.piUrl;
   
   if (!url) {
     return new NextResponse(JSON.stringify({ error: { message: "No BYOK URL configured" } }), { status: 500 });
@@ -187,7 +188,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pat
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].error) {
           text = JSON.stringify(parsed[0]);
         }
-      } catch (e) {
+      } catch {
         // Ignore parse errors, just return original text
       }
     }
@@ -199,7 +200,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ pat
       }
     });
 
-  } catch (err: any) {
-    return new NextResponse(JSON.stringify({ error: { message: `Proxy Error: ${err.message}` } }), { status: 500 });
+  } catch (err: unknown) {
+    return new NextResponse(JSON.stringify({ error: { message: `Proxy Error: ${err instanceof Error ? err.message : String(err)}` } }), { status: 500 });
   }
 }

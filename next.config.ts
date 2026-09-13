@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: self-contained PDF rendering assets.
 import type { NextConfig } from "next";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -33,14 +34,19 @@ const nextConfig: NextConfig = {
     "**/*": [
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs",
       "./node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-      "./node_modules/@openai/codex/bin/codex.js",
-      "./node_modules/@earendil-works/pi-coding-agent/**/*",
+
+
       // pdfkit (Markdown→PDF importer) reads its standard-font metrics from
       // `__dirname + '/data/*.afm'` at runtime. Previously pdfkit was only
       // used by build-time scripts, so those data files were never traced
       // into the standalone bundle — now the upload route renders Markdown,
       // so they must ship or rendering throws ENOENT in the packaged app.
       "./node_modules/pdfkit/js/data/*.afm",
+      "./node_modules/pdfjs-dist/standard_fonts/**/*",
+      "./node_modules/pdfjs-dist/cmaps/**/*",
+      "./node_modules/pdfjs-dist/wasm/**/*",
+      "./node_modules/pdfjs-dist/iccs/**/*",
+      "./node_modules/@napi-rs/canvas*/**/*",
     ],
   },
   // Keep the tracer out of paths the Next.js server never needs at
@@ -56,6 +62,7 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: {
     "**/*": [
       "dist-electron/**",
+      "work/**",
       "electron/**",
       "scripts/**",
       ".next/cache/**",
@@ -89,8 +96,8 @@ const nextConfig: NextConfig = {
   // `__dirname` stays node_modules/pdfkit/js, right next to the traced data.
   serverExternalPackages: [
     "pdfjs-dist",
-    "@openai/codex-sdk",
-    "@openai/codex",
+    "@napi-rs/canvas",
+
     "pdfkit",
   ],
 };

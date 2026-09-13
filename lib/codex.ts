@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: one ChatGPT transport.
 /**
  * AI provider router — public API for the entire app.
  *
@@ -26,9 +27,6 @@ import type { AIProvider, RunOptions as ProviderRunOptions } from "./provider-ty
 import type { ProviderName } from "./provider-types";
 import { PROVIDER_LABELS } from "./provider-types";
 import { CodexProvider } from "./providers/codex-provider";
-import { GeminiProvider } from "./providers/gemini-provider";
-import { ClaudeProvider } from "./providers/claude-provider";
-import { PiProvider } from "./providers/pi-provider";
 import { CodexError, classifyCodexError, toCodexErrorPayload as toErrorPayloadBase } from "./codex-errors";
 import type { CodexErrorKind } from "./codex-errors";
 import { recordUsage, normalizeUsage } from "./usage-store";
@@ -63,17 +61,8 @@ export function toCodexErrorPayload(err: unknown): { kind: CodexErrorKind; messa
 export type { CodexErrorKind } from "./codex-errors";
 
 // ── Provider singletons ─────────────────────────────────────────────────
-const providers: Record<ProviderName, AIProvider> = {
-  codex: new CodexProvider(),
-  gemini: new GeminiProvider(),
-  claude: new ClaudeProvider(),
-  pi: new PiProvider(),
-};
-
-function activeProvider(): AIProvider {
-  const name = loadSettings().provider;
-  return providers[name] ?? providers.codex;
-}
+const provider: AIProvider = new CodexProvider();
+function activeProvider(): AIProvider { return provider; }
 
 /** Return the currently-selected provider name. */
 export function getActiveProviderName(): ProviderName {
@@ -216,7 +205,7 @@ export async function runJson<T>(
 
   const link = linkAbort(opts.signal);
   try {
-    const provider = providers[providerName] ?? providers.codex;
+    const provider = activeProvider();
     const result = await provider.runJson<T>(prompt, outputSchema, {
       ...opts,
       signal: link.signal,
@@ -260,7 +249,7 @@ export async function runJsonInThread<T>(args: {
 
   const link = linkAbort(args.opts?.signal);
   try {
-    const provider = providers[providerName] ?? providers.codex;
+    const provider = activeProvider();
     const result = await provider.runJsonInThread<T>({
       ...args,
       opts: { ...(args.opts ?? {}), signal: link.signal },

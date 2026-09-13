@@ -1,9 +1,10 @@
+// Modified for Get It Jacob: import/chat workflow.
 import Link from "next/link";
 import UploadCard from "@/components/UploadCard";
 import AccountButton from "@/components/AccountButton";
 import SettingsButton from "@/components/SettingsButton";
 import TooltipChip from "@/components/TooltipChip";
-import WelcomePopup from "@/components/WelcomePopup";
+
 import { APP_VERSION } from "@/lib/version";
 import {
   Upload,
@@ -42,12 +43,12 @@ export default function Home() {
       <div className="tab-bar tab-bar--fused">
         <div className="tab-item" data-active="true">
           <Upload className="h-3.5 w-3.5 text-[var(--accent-600)]" />
-          <span>Upload</span>
+          <span>Importer</span>
         </div>
-        <TooltipChip tip="Your library of opened PDFs.">
-          <Link href="/library" aria-label="Open library" className="tab-item">
+        <TooltipChip tip="Vos PDF et conversations enregistrés.">
+          <Link href="/library" aria-label="Ouvrir la bibliothèque" className="tab-item">
             <BookOpen className="h-3.5 w-3.5 text-[var(--ink-400)]" />
-            <span>Library</span>
+            <span>Bibliothèque</span>
           </Link>
         </TooltipChip>
         <div className="ml-auto flex items-center gap-1 pr-1">
@@ -90,7 +91,7 @@ export default function Home() {
       >
         v{APP_VERSION}
       </div>
-      <WelcomePopup />
+
     </main>
   );
 }

@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,8 +8,7 @@ import {
   Upload,
   Loader2,
   ArrowRight,
-  Box,
-  Activity,
+  MessageCircle,
   Atom,
   FileText,
   FlaskConical,
@@ -18,7 +18,6 @@ import {
   BarChart3,
   SquareFunction,
   Network,
-  BookOpen,
   AlertTriangle,
   X,
 } from "lucide-react";
@@ -50,11 +49,11 @@ const FEATURES: Array<{
   title: string;
   desc: string;
 }> = [
-  { color: "rose",   icon: Box,       title: "3D models",   desc: "Rotate molecules, organs, geometries" },
-  { color: "amber",  icon: Activity,  title: "Simulations", desc: "Watch concepts come alive" },
-  { color: "violet", icon: Sigma,     title: "Formulas",    desc: "Math rendered, not just typed" },
-  { color: "sky",    icon: BarChart3, title: "Graphs",      desc: "Data made visual" },
-  { color: "emerald", icon: FileText,  title: "Source",      desc: "Reference text pulled into focus" },
+  { color: "rose", icon: MessageCircle, title: "Chat", desc: "Discuter du document" },
+  { color: "amber", icon: Network, title: "Diagrammes", desc: "Comprendre les liens sur demande" },
+  { color: "violet", icon: Sigma,     title: "Formules", desc: "Des explications à votre rythme" },
+  { color: "sky",    icon: BarChart3, title: "Graphiques", desc: "Les données sur demande" },
+  { color: "emerald", icon: FileText,  title: "Source",      desc: "Votre page comme contexte" },
 ];
 
 type Sample = {
@@ -89,11 +88,11 @@ const ACCEPTED_FILE = /\.(pdf|md|markdown|mdown|mkd|mdwn)$/i;
 
 function humaniseAgo(ts: number): string {
   const dt = Date.now() - ts;
-  if (dt < 5_000) return "just now";
-  if (dt < 60_000) return `${Math.round(dt / 1000)}s ago`;
-  if (dt < 3_600_000) return `${Math.round(dt / 60_000)}m ago`;
-  if (dt < 86_400_000) return `${Math.round(dt / 3_600_000)}h ago`;
-  if (dt < 7 * 86_400_000) return `${Math.round(dt / 86_400_000)}d ago`;
+  if (dt < 5_000) return "à l’instant";
+  if (dt < 60_000) return `${Math.round(dt / 1000)} s plus tôt`;
+  if (dt < 3_600_000) return `${Math.round(dt / 60_000)} min plus tôt`;
+  if (dt < 86_400_000) return `${Math.round(dt / 3_600_000)} h plus tôt`;
+  if (dt < 7 * 86_400_000) return `${Math.round(dt / 86_400_000)} j plus tôt`;
   return new Date(ts).toLocaleDateString();
 }
 
@@ -104,6 +103,8 @@ export default function UploadCard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [preparationId, setPreparationId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ status: string; completedPages: number; totalPages: number; error?: string; activePages?: number[]; phase?: "pages" | "context" } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -119,11 +120,59 @@ export default function UploadCard() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (!preparationId || progress?.status === "error" || progress?.status === "ready") return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    async function poll() {
+      try {
+        const response = await fetch(`/api/preparation/${preparationId}`, { cache: "no-store", signal: controller.signal });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "La progression est indisponible.");
+        if (cancelled) return;
+        setProgress(result);
+        if (result.status === "ready") { router.push(`/viewer/${preparationId}`); return; }
+        if (result.status === "error" || result.status === "missing") {
+          setError(result.error || "Préparation interrompue. Reprenez les pages restantes.");
+          setBusy(null);
+          return;
+        }
+        timer = setTimeout(poll, 1200);
+      } catch (error) {
+        if (cancelled) return;
+        setError((error as Error).message);
+        setProgress(current => current ? { ...current, status: "error" } : null);
+        setBusy(null);
+      }
+    }
+    void poll();
+    return () => { cancelled = true; controller.abort(); clearTimeout(timer); };
+  }, [preparationId, progress?.status, router]);
+
+  async function resumePreparation() {
+    if (!preparationId) return;
+    setError(null);
+    setBusy("upload");
+    try {
+      const response = await fetch(`/api/preparation/${preparationId}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "resume" }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Impossible de reprendre.");
+      setProgress(result);
+      if (result.status === "ready") router.push(`/viewer/${preparationId}`);
+    } catch (error) { setError((error as Error).message); setBusy(null); }
+  }
+
   const libraryPreview = useMemo(() => library.slice(0, 6), [library]);
 
   const startSample = useCallback(
     async (id: string) => {
+      if (busy) return;
       setError(null);
+      setProgress(null);
+      setPreparationId(null);
       setBusy(id);
       try {
         const fd = new FormData();
@@ -131,20 +180,25 @@ export default function UploadCard() {
         const r = await fetch("/api/upload", { method: "POST", body: fd });
         if (!r.ok) throw new Error((await r.json()).error ?? "upload failed");
         const j = await r.json();
-        router.push(`/viewer/${j.docId}`);
+        setPreparationId(j.docId);
+        setProgress(j.preparation);
+        if (j.preparation?.status === "ready") router.push(`/viewer/${j.docId}`);
       } catch (e) {
         setError((e as Error).message);
         setBusy(null);
       }
     },
-    [router],
+    [router, busy],
   );
 
   const startUpload = useCallback(
     async (file: File) => {
+      if (busy) return;
       setError(null);
+      setProgress(null);
+      setPreparationId(null);
       if (!ACCEPTED_FILE.test(file.name)) {
-        setError("Please pick a PDF or Markdown (.md) file");
+        setError("Choisissez un fichier PDF ou Markdown (.md).");
         return;
       }
       setBusy("upload");
@@ -154,13 +208,15 @@ export default function UploadCard() {
         const r = await fetch("/api/upload", { method: "POST", body: fd });
         if (!r.ok) throw new Error((await r.json()).error ?? "upload failed");
         const j = await r.json();
-        router.push(`/viewer/${j.docId}`);
+        setPreparationId(j.docId);
+        setProgress(j.preparation);
+        if (j.preparation?.status === "ready") router.push(`/viewer/${j.docId}`);
       } catch (e) {
         setError((e as Error).message);
         setBusy(null);
       }
     },
-    [router],
+    [router, busy],
   );
 
   return (
@@ -176,10 +232,9 @@ export default function UploadCard() {
       </h1>
 
       <p className="mt-7 max-w-2xl text-[15px] leading-[1.65] text-[var(--ink-700)]">
-        Drop a PDF. Its hardest concepts come alive inline as you read.
-        Chat with it, drill yourself, explain it back to a curious
-        eight-year-old. Watch a map of what you actually understand
-        grow, concept by concept, not page by page.
+        Déposez votre PDF. Une préparation initiale examine chaque page,
+        son texte et ses figures. Ensuite, lisez à gauche et discutez à droite.
+        Le chat suit votre page et les actions sur les passages restent à votre demande.
       </p>
 
       {/* Drop zone — output-type badges + CTA button */}
@@ -196,8 +251,8 @@ export default function UploadCard() {
           const f = e.dataTransfer.files?.[0];
           if (f) startUpload(f);
         }}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); inputRef.current?.click(); } }}
+        onClick={() => { if (!busy) inputRef.current?.click(); }}
+        onKeyDown={(e) => { if (!busy && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); inputRef.current?.click(); } }}
         role="button"
         tabIndex={0}
         className={[
@@ -210,6 +265,7 @@ export default function UploadCard() {
         <input
           ref={inputRef}
           type="file"
+          disabled={busy != null}
           accept="application/pdf,.pdf,text/markdown,.md,.markdown"
           className="hidden"
           onChange={(e) => {
@@ -235,27 +291,41 @@ export default function UploadCard() {
           ))}
         </div>
         <p className="flex flex-wrap items-center justify-center gap-2 text-[14px] text-[var(--ink-700)]">
-          {busy === "upload" ? (
+          {busy != null ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin text-[var(--accent-600)]" />
               <span className="font-medium text-[var(--ink-900)]">
-                Uploading and parsing…
+                Lecture locale et préparation du document…
               </span>
             </>
           ) : (
             <>
-              <span>Drop your PDF or Markdown here, or</span>
+              <span>Déposez votre PDF ou Markdown ici, ou</span>
               <span className="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-600)] px-3 py-1 text-[12.5px] font-semibold text-white shadow-sm transition hover:bg-[var(--accent-700)]">
                 <Upload className="h-3.5 w-3.5" />
-                Select the file
+                Choisir le fichier
               </span>
             </>
           )}
         </p>
         <p className="mt-3 text-[11.5px] text-[var(--ink-400)]">
-          Text-based PDFs and Markdown (.md) work best. No OCR.
+          PDF, scans et Markdown · 150 pages maximum · Lecture initiale avec votre connexion IA.
         </p>
       </div>
+
+      {progress && (
+        <div role="status" aria-live="polite" className="mt-5 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-5 py-4">
+          <p className="text-sm font-medium text-[var(--ink-900)]">Préparation : {progress.completedPages} / {progress.totalPages} pages examinées</p>
+          <progress aria-label="Pages examinées" className="mt-3 h-2 w-full accent-[var(--accent-600)]" value={progress.completedPages} max={Math.max(progress.totalPages, 1)} />
+          <p className="mt-2 text-xs leading-relaxed text-[var(--ink-500)]">
+            {progress.status === "preparing" ? progress.phase === "context" ? "Toutes les pages sont examinées. Installation du contexte complet dans le chat…" : `Lecture du texte et des figures${progress.activePages?.length ? `, pages ${progress.activePages.join(", ")}` : ""}. Le lecteur s’ouvrira automatiquement une fois toutes les pages examinées.` : "Les pages déjà préparées sont conservées."}
+            {" "}La durée dépend du document et du service IA. Les éléments illisibles sont signalés dans les notes.
+          </p>
+          {progress.status === "preparing" && preparationId && <button type="button" className="mt-3 text-xs text-[var(--ink-600)] underline" onClick={async () => {
+            await fetch(`/api/preparation/${preparationId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel" }) });
+          }}>Arrêter et conserver les pages terminées</button>}
+        </div>
+      )}
 
       {/* Upload error / rejected-document alert — prominent, right under the
           drop zone so the cause is obvious the moment a bad PDF is refused. */}
@@ -267,9 +337,10 @@ export default function UploadCard() {
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--feedback-wrong-icon)]" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-semibold text-[var(--feedback-wrong-text)]">
-              We couldn&rsquo;t open this document
+              La préparation n’a pas pu se terminer
             </p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--feedback-wrong-text)]">{error}</p>
+            {preparationId && <button type="button" onClick={resumePreparation} disabled={busy != null} className="mt-3 rounded-md bg-[var(--accent-600)] px-3 py-2 text-xs font-medium text-white disabled:opacity-50">Reprendre les pages restantes</button>}
           </div>
           <button
             type="button"
@@ -287,21 +358,21 @@ export default function UploadCard() {
         <div className="mt-12">
           <div className="mb-4 flex items-baseline justify-between">
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--ink-400)]">
-              Your library
+              Votre bibliothèque
             </p>
             {library.length > libraryPreview.length ? (
               <Link
                 href="/library"
                 className="text-[11px] font-medium text-[var(--accent-700)] hover:underline"
               >
-                See all {library.length}
+                Tout voir ({library.length})
               </Link>
             ) : (
               <Link
                 href="/library"
                 className="text-[11px] font-medium text-[var(--accent-700)] hover:underline"
               >
-                Open Library
+                Ouvrir la bibliothèque
               </Link>
             )}
           </div>
@@ -323,7 +394,7 @@ export default function UploadCard() {
                       {title}
                     </p>
                     <p className="mt-0.5 truncate text-[11.5px] text-[var(--ink-500)]">
-                      {d.numPages} page{d.numPages === 1 ? "" : "s"} · last opened {humaniseAgo(d.lastActivityAt)}
+                      {d.numPages} page{d.numPages === 1 ? "" : "s"} · ouvert {humaniseAgo(d.lastActivityAt)}
                     </p>
                     {d.kgStatus === "ready" && d.kgEvaluationCount > 0 && (
                       <p className="mt-1 inline-flex items-center gap-1 rounded-md border border-[var(--feedback-correct-border)] bg-[var(--feedback-correct-bg)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--feedback-correct-text)]">
@@ -342,10 +413,10 @@ export default function UploadCard() {
         </div>
       )}
 
-      {/* Sample documents — Reflect-grade list cards */}
+      {/* Documents d’exemple — Reflect-grade list cards */}
       <div className="mt-12">
         <p className="mb-4 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--ink-400)]">
-          Sample documents
+          Documents d’exemple
         </p>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {samples.map((s) => {

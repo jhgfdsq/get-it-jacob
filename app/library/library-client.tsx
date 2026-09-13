@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
 /**
@@ -66,17 +67,17 @@ export default function LibraryClient() {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    setError(null);
-    try {
-      const r = await fetch("/api/library", { cache: "no-store" });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = (await r.json()) as { docs: LibraryRow[] };
-      setRows(j.docs);
-    } catch (e) {
-      setError((e as Error).message);
-      setRows([]);
-    }
+  const reload = useCallback(() => {
+    return fetch("/api/library", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return (await response.json()) as { docs: LibraryRow[] };
+      })
+      .then(({ docs }) => { setError(null); setRows(docs); })
+      .catch((error: unknown) => {
+        setError(error instanceof Error ? error.message : String(error));
+        setRows([]);
+      });
   }, []);
 
   useEffect(() => {

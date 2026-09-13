@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -13,14 +14,14 @@ type Props = {
 export default function TwoDAnimView({ spec, onRuntimeError }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ spec: TwoDAnimSpec; message: string } | null>(null);
+  const error = failure?.spec === spec ? failure.message : null;
   const reportedRef = useRef(false);
 
   useEffect(() => {
-    setError(null);
     reportedRef.current = false;
     const reportError = (msg: string) => {
-      setError(msg);
+      setFailure({ spec, message: msg });
       if (!reportedRef.current) {
         reportedRef.current = true;
         onRuntimeError?.(msg);

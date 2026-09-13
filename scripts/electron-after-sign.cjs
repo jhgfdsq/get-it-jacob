@@ -1,86 +1,16 @@
-/**
- * scripts/electron-after-sign.cjs
- *
- * electron-builder `afterSign` hook. Runs after the app bundle is
- * staged but before the .dmg is built. Two branches live here:
- *
- *   • Developer ID signing (env GETIT_MAC_SIGNING_MODE=developer-id*)
- *     — `scripts/build-electron.mjs` detected a "Developer ID
- *     Application" cert in the keychain and passed flags to
- *     electron-builder so it signs every Mach-O with the cert (and,
- *     when `mode=developer-id`, sends the bundle to Apple's notary
- *     service and staples the ticket onto the .app). The afterSign
- *     hook **does nothing in this branch** — overwriting the
- *     Developer-ID signature with `codesign --sign -` would replace
- *     a trusted signature with an ad-hoc one and break Gatekeeper /
- *     notarization. We only verify the signature is still good.
- *
- *   • Ad-hoc fallback (no Developer ID cert detected, or
- *     `CSC_IDENTITY_AUTO_DISCOVERY=false`) — same old behaviour: we
- *     run `codesign --sign -` over every Mach-O so the Apple Silicon
- *     kernel's mandatory-signature check passes (without this, M-
- *     series Macs report a fresh download as "damaged" rather than
- *     showing the bypassable Gatekeeper prompt). The first launch
- *     still requires a one-time System Settings → Privacy & Security
- *     → Open Anyway dance — a Developer-ID + notarize combination
- *     removes that prompt entirely.
- *
- * No-op on Windows / Linux (electron-builder calls afterSign on every
- * target with `electronPlatformName` set accordingly).
- */
-
-"use strict";
-
-const { execFileSync } = require("node:child_process");
-const path = require("node:path");
-const fs = require("node:fs");
-
-module.exports = async function afterSign(context) {
-  const { electronPlatformName, appOutDir, packager } = context;
-  if (electronPlatformName !== "darwin") return;
-
-  const appName = packager.appInfo.productFilename;
-  const appPath = path.join(appOutDir, `${appName}.app`);
-  if (!fs.existsSync(appPath)) {
-    console.warn(`[after-sign] expected ${appPath} but it does not exist; skipping.`);
-    return;
+// Get It Jacob: local ad-hoc app signature; preserve OpenAI's runtime signature.
+const fs = require('node:fs');
+const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+module.exports = async function(context) {
+  if (context.electronPlatformName !== 'darwin') return;
+  const appPath = path.join(context.appOutDir,`${context.packager.appInfo.productFilename}.app`);
+  const frameworks = path.join(appPath,'Contents/Frameworks');
+  for (const name of fs.readdirSync(frameworks)) {
+    if (name.endsWith('.app') || name.endsWith('.framework') || name.endsWith('.dylib')) execFileSync('codesign',['--force','--deep','--sign','-','--timestamp=none',path.join(frameworks,name)]);
   }
-
-  const mode = process.env.GETIT_MAC_SIGNING_MODE || "ad-hoc";
-
-  if (mode === "developer-id" || mode === "developer-id-no-notary") {
-    // electron-builder already signed everything with the Developer
-    // ID cert (and, for `developer-id`, will go on to notarize +
-    // staple in a later step). Touching the signature here would
-    // downgrade it to ad-hoc and break Gatekeeper. Just verify the
-    // existing signature looks healthy and log so the build output
-    // shows what branch ran.
-    console.log(`[after-sign] mode=${mode} — leaving Developer ID signature in place; verifying`);
-    execFileSync("codesign", ["--verify", "--deep", "--strict", appPath], {
-      stdio: "inherit",
-    });
-    console.log(`[after-sign] Developer ID signature verified.`);
-    return;
-  }
-
-  // mode === "ad-hoc" (or unset, treated as ad-hoc for legacy parity).
-  //
-  // `--force` replaces any pre-existing signature (Electron ships its
-  // framework pre-signed by the upstream project; if we leave that in
-  // place the outer ad-hoc sig won't validate against the inner one).
-  // `--deep` recurses into Frameworks/, Helpers, MachO inside Resources
-  // (the bundled Codex Rust binary lives under .../app.asar.unpacked/
-  // electron/codex-bin/.../codex).
-  // `--sign -` is the documented ad-hoc identity sigil.
-  console.log(`[after-sign] mode=${mode} — ad-hoc signing ${appPath}`);
-  execFileSync(
-    "codesign",
-    ["--force", "--deep", "--sign", "-", "--timestamp=none", appPath],
-    { stdio: "inherit" },
-  );
-
-  execFileSync("codesign", ["--verify", "--deep", "--strict", appPath], {
-    stdio: "inherit",
-  });
-  console.log(`[after-sign] ad-hoc signature verified.`);
+  execFileSync('codesign',['--force','--sign','-','--timestamp=none',appPath]);
+  execFileSync('codesign',['--verify','--deep','--strict',appPath]);
+  const binary = path.join(appPath,'Contents/Resources/app/electron/codex-bin/aarch64-apple-darwin/codex/codex');
+  execFileSync('codesign',['--verify','--strict',binary]);
 };

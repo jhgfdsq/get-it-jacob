@@ -1,18 +1,18 @@
 {
-  "name": "get-it",
-  "productName": "Get It",
-  "version": "0.0.0",
-  "description": "Read it. See it. Get it. — the document-centred study companion.",
+  "name": "get-it-jacob",
+  "productName": "Get It Jacob",
+  "version": "1.0.0",
+  "description": "Votre PDF, votre page, votre conversation.",
   "author": {
     "name": "beltromatti",
     "email": "beltromatti@gmail.com"
   },
-  "homepage": "https://github.com/beltromatti/get-it",
+  "homepage": "https://github.com/jhgfdsq/get-it-jacob",
   "license": "Apache-2.0",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
-    "dev": "npm run cleanup && npm run build && npm run electron:prepare && node scripts/launch.mjs",
+    "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -27,12 +27,11 @@
     "electron:prepare": "node scripts/electron-prepare.mjs",
     "build:desktop": "npm run build && npm run electron:prepare && node scripts/build-electron.mjs",
     "build:desktop:mac-arm": "npm run build && npm run electron:prepare -- --target=darwin-arm64 && node scripts/build-electron.mjs --target=mac-arm64",
-    "build:desktop:mac-x64": "npm run build && npm run electron:prepare -- --target=darwin-x64 && node scripts/build-electron.mjs --target=mac-x64",
-    "build:desktop:win-x64": "npm run build && npm run electron:prepare -- --target=win32-x64 && node scripts/build-electron.mjs --target=win-x64",
-    "build:desktop:all": "node scripts/build-electron.mjs --all"
+    "browser:dev": "next dev --hostname 127.0.0.1",
+    "test:reader": "tsx scripts/test-chat.ts && tsx scripts/test-preparation.ts && tsx scripts/test-manual-visual.ts"
   },
   "dependencies": {
-    "@openai/codex-sdk": "^0.130.0",
+    "@napi-rs/canvas": "0.1.100",
     "@tailwindcss/typography": "^0.5.19",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
@@ -74,9 +73,9 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "com.beltromatti.getit",
-    "productName": "Get It",
-    "copyright": "Copyright © 2026 beltromatti",
+    "appId": "fr.jacob.getit",
+    "productName": "Get It Jacob",
+    "copyright": "Copyright \u00a9 2026 beltromatti",
     "directories": {
       "buildResources": "electron/assets",
       "output": "dist-electron"
@@ -95,7 +94,9 @@
       "!**/*.map",
       "!**/*.ts",
       "!**/tsconfig*",
-      "!node_modules/**/.bin"
+      "!node_modules/**/.bin",
+      "LICENSE",
+      "NOTICE"
     ],
     "mac": {
       "category": "public.app-category.education",
@@ -105,7 +106,7 @@
       "entitlements": "electron/assets/entitlements.mac.plist",
       "entitlementsInherit": "electron/assets/entitlements.mac.plist",
       "extendInfo": {
-        "CFBundleDisplayName": "Get It.",
+        "CFBundleDisplayName": "Get It Jacob",
         "NSCameraUsageDescription": "Get It. does not access the camera; this entry is required by Apple's notarization rules because Electron's helper has the AVFoundation surface compiled in.",
         "NSMicrophoneUsageDescription": "Get It. does not access the microphone; this entry is required by Apple's notarization rules because Electron's helper has the AVFoundation surface compiled in.",
         "NSDocumentsFolderUsageDescription": "Get It. may read PDFs you explicitly pick from your Documents folder.",
@@ -126,5 +127,6 @@
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false
     }
-  }
+  },
+  "getItJacobNotice": "Modified September 2026 for Get It Jacob; see NOTICE for the fork changes."
 }

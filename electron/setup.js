@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: staged verified binary only, no auto-download.
 /**
  * Get It. — Codex CLI setup module.
  *
@@ -38,7 +39,7 @@ const https = require("node:https");
 const os = require("node:os");
 const zlib = require("node:zlib");
 
-const REQUIRED_CODEX_VERSION = "0.130.0";
+const REQUIRED_CODEX_VERSION = "0.154.0-alpha.6.2";
 
 // ── Platform target triple (same table as @openai/codex-sdk) ────────────
 const PLATFORM_PACKAGE_BY_TARGET = {
@@ -156,20 +157,7 @@ function resolveCodexBinary() {
       return { path: candidate, source: "bundled" };
     }
   }
-  const pkg = platformPackage();
-  if (pkg) {
-    for (const root of candidateNodeModulesRoots()) {
-      const candidate = path.join(root, pkg, "vendor", triple, "codex", exe);
-      if (fs.existsSync(candidate)) {
-        maybeChmod(candidate);
-        return { path: candidate, source: "node_modules" };
-      }
-    }
-  }
-  const userDataBin = bundledCodexPath();
-  if (userDataBin && fs.existsSync(userDataBin)) {
-    return { path: userDataBin, source: "userdata" };
-  }
+
   return null;
 }
 
@@ -410,16 +398,7 @@ function ensureIpcHandlers() {
       sendStatus();
       return refreshCodexStatus();
     }
-    try {
-      sendStatus({ phase: "installing", message: "Downloading Codex CLI…" });
-      await fetchCodexBinaryToUserData(REQUIRED_CODEX_VERSION, (p) => {
-        sendStatus({ phase: "installing", message: p.phase === "download" ? "Downloading Codex CLI…" : "Unpacking Codex CLI…" });
-      });
-      sendStatus({ phase: "idle" });
-    } catch (err) {
-      sendStatus({ phase: "error", message: String(err && err.message ? err.message : err) });
-      return refreshCodexStatus();
-    }
+    sendStatus({ phase: "error", message: "Le moteur vérifié est absent. Réinstallez Get It Jacob. Aucun téléchargement automatique n’est effectué." });
     return refreshCodexStatus();
   });
   ipcMain.handle("wizard:login", async (_e, provider) => {

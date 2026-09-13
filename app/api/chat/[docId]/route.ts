@@ -1,241 +1,139 @@
-/**
- * Chat with the document.
- *
- *   GET    /api/chat/[docId]                         → list of chats (full)
- *   POST   /api/chat/[docId] { action:"create", title? }
- *                                                    → new empty chat
- *   POST   /api/chat/[docId] { action:"send", chatId, message }
- *                                                    → user message + assistant reply
- *   DELETE /api/chat/[docId]?chatId=...              → remove a chat
- *
- * After every assistant turn we schedule a knowledge-graph evaluation pass
- * (fire-and-forget) so the user's mastery scores update as soon as the
- * model has finished writing.
- */
-
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
+/** Document chat. The prepared source is seeded once; page and selection
+ * accompany each request. Actual assistant deltas stream immediately via SSE.
+ * No detection, evaluation, or knowledge-graph work runs after a chat turn. */
 import { NextResponse } from "next/server";
-import { runJsonInThread, CodexError, getActiveProviderName } from "@/lib/codex";
+import { runDocumentAI, DOCUMENT_CHAT_INSTRUCTIONS } from "@/lib/document-ai";
 import { getDoc } from "@/lib/store";
-import {
-  loadWorkContext,
-  saveWorkContext,
-  newId,
-  type ChatMessage,
-} from "@/lib/work-context";
-import { chatReplySchema, type ChatReplyResult } from "@/lib/schemas-kg";
-import { loadKG } from "@/lib/kg";
-import type { ProviderName } from "@/lib/provider-types";
+import { readPreparation, buildPreparedContext } from "@/lib/preparation";
+import { loadWorkContext, saveWorkContext, newId, type ChatMessage } from "@/lib/work-context";
 
 export const runtime = "nodejs";
-export const maxDuration = 180;
+export const maxDuration = 300;
+const CONTEXT_VERSION = 1;
+const activeChats = new Set<string>();
 
-const SYSTEM = `You are Get It.'s study companion for one specific document.
 
-You answer the student's questions about the document accurately and
-concisely. You teach with care:
+type RouteContext = { params: Promise<{ docId: string }> };
+function validDocId(docId: string): boolean { return /^[a-z0-9-]{1,64}$/.test(docId); }
 
-  • If the student is missing a prerequisite, give a 1-line bridge before
-    answering.
-  • Use plain language; introduce technical terms only when the source did.
-  • When the source contradicts a common misconception, name the
-    misconception explicitly.
-  • Cite page numbers from the document when you reference specific facts.
-  • Encourage the student to explain things back to you when their question
-    suggests confusion.
-
-LANGUAGE: reply in the same language as the student's most recent message.
-If unsure, default to the document's language.
-
-KEEP IT TIGHT: 2–8 short paragraphs is usually plenty. No filler. No
-repeating the question.`;
-
-function docContext(docId: string): string {
-  const doc = getDoc(docId);
-  if (!doc) return "";
-  const kg = loadKG(docId);
-  const kgPart = kg && kg.status === "ready"
-    ? `\nKEY CONCEPTS (knowledge graph):\n${kg.nodes
-        .map((n) => `- ${n.label}: ${n.summary}`)
-        .join("\n")}\n`
-    : "";
-  // Full document text — no excerpt cap. Upload caps the document at
-  // MAX_PDF_PAGES, and the conversation runs on a persistent Codex thread, so
-  // this whole block is sent ONCE on the first turn and reused (cached) for
-  // every later turn rather than re-sent each message.
-  const fullText = doc.extracted.pages
-    .map((p) => `[page ${p.pageIndex + 1}]\n${p.text}`)
-    .join("\n\n");
-  return `DOCUMENT: ${doc.filename}\n${kgPart}\nDOCUMENT TEXT:\n${fullText}`;
-}
-
-function renderHistory(messages: ChatMessage[]): string {
-  return messages
-    .map((m) => `${m.role === "user" ? "STUDENT" : "ASSISTANT"}: ${m.content}`)
-    .join("\n\n");
-}
-
-export async function GET(
-  _req: Request,
-  ctx: { params: Promise<{ docId: string }> },
-) {
+export async function GET(_req: Request, ctx: RouteContext) {
   const { docId } = await ctx.params;
-  if (!getDoc(docId)) {
-    return NextResponse.json({ error: "doc not found" }, { status: 404 });
-  }
-  const wc = loadWorkContext(docId);
-  return NextResponse.json({ chats: wc.chats });
+  if (!validDocId(docId) || !getDoc(docId)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  return NextResponse.json({ chats: loadWorkContext(docId).chats });
 }
 
-type Body =
-  | { action: "create"; title?: string }
-  | { action: "send"; chatId: string; message: string };
-
-export async function POST(
-  req: Request,
-  ctx: { params: Promise<{ docId: string }> },
-) {
+export async function POST(req: Request, ctx: RouteContext) {
+  const startedAt = Date.now();
   const { docId } = await ctx.params;
-  if (!getDoc(docId)) {
-    return NextResponse.json({ error: "doc not found" }, { status: 404 });
-  }
-  const body = (await req.json()) as Body;
+  const doc = validDocId(docId) ? getDoc(docId) : null;
+  if (!doc) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  let body: Record<string, unknown>;
+  try {
+    const parsed: unknown = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid body");
+    body = parsed as Record<string, unknown>;
+  } catch { return NextResponse.json({ error: "Requête invalide." }, { status: 400 }); }
   const wc = loadWorkContext(docId);
-
   if (body.action === "create") {
+    if (body.title != null && typeof body.title !== "string") return NextResponse.json({ error: "Titre invalide." }, { status: 400 });
     const now = Date.now();
-    const chat = {
-      id: newId(),
-      title: (body.title ?? "New chat").slice(0, 80),
-      createdAt: now,
-      updatedAt: now,
-      messages: [],
-    };
+    const chat = { id: newId(), title: ((body.title as string | undefined) || "Nouvelle discussion").slice(0, 80), createdAt: now, updatedAt: now, messages: [] };
     wc.chats.unshift(chat);
     saveWorkContext(wc);
     return NextResponse.json({ chat });
   }
-
-  if (body.action === "send") {
-    const chat = wc.chats.find((c) => c.id === body.chatId);
-    if (!chat) return NextResponse.json({ error: "chat not found" }, { status: 404 });
-    const message = body.message?.trim();
-    if (!message) return NextResponse.json({ error: "empty message" }, { status: 400 });
-
-    const userMsg: ChatMessage = { role: "user", content: message, ts: Date.now() };
-    // History to send the model with the new turn appended — but NOT yet
-    // persisted. We commit the user message and the reply together only after
-    // the codex call succeeds (below), so a failed turn leaves no orphan user
-    // message on disk and the client can re-send to retry without duplicating
-    // it.
-    const messagesForPrompt = [...chat.messages, userMsg];
-
-    // The new turn the student just typed — all that needs to go over the
-    // wire when resuming an existing Codex thread.
-    const turnInput = `STUDENT: ${message}\n\n--- ASSISTANT REPLY ---\nReply now as ASSISTANT. Output JSON.`;
-
-    const activeProvider = getActiveProviderName();
-    let reply: ChatReplyResult | null = null;
-    let codexThreadId: string | null = chat.codexThreadId ?? null;
-    let threadProvider: ProviderName | null = chat.threadProvider ?? null;
-
-    // Resume the engine's native thread ONLY when it was minted by the engine
-    // that's active right now — a thread id is provider-specific. The document
-    // + prior turns already live in that thread, so we send only the new
-    // message (a prefix-cache hit, a fraction of the tokens). If the user
-    // switched providers, we skip resume entirely and migrate transparently
-    // below (no wasted cross-provider resume call, no error-string guessing).
-    const canResume = !!chat.codexThreadId && chat.threadProvider === activeProvider;
-    if (canResume) {
-      try {
-        const { data, threadId } = await runJsonInThread<ChatReplyResult>({
-          outputSchema: chatReplySchema,
-          opts: { reasoning: "low" },
-          resume: { threadId: chat.codexThreadId!, input: turnInput },
-        });
-        reply = data;
-        codexThreadId = threadId ?? chat.codexThreadId!;
-        threadProvider = activeProvider;
-      } catch (e) {
-        // Rate-limit / auth / binary: let the health banner take over.
-        if (e instanceof CodexError && e.kind !== "generic") throw e;
-        // Generic failure (e.g. the session expired / was evicted): fall
-        // through and rebuild a fresh thread with full context so the answer
-        // never silently degrades.
-        reply = null;
-      }
-    }
-
-    // No usable thread (first turn, provider switched, or resume failed): open
-    // a fresh thread and seed it with the full context — system prompt + whole
-    // document + the conversation so far. Stable prefix first, latest turn last.
-    // This is the transparent migration: the new engine sees the entire history.
-    if (!reply) {
-      const fullInput = `${SYSTEM}\n\n${docContext(docId)}\n\n--- CONVERSATION SO FAR ---\n${renderHistory(
-        messagesForPrompt,
-      )}\n\n--- ASSISTANT REPLY ---\nReply now as ASSISTANT. Output JSON.`;
-      const { data, threadId } = await runJsonInThread<ChatReplyResult>({
-        outputSchema: chatReplySchema,
-        opts: { reasoning: "low" },
-        start: { input: fullInput },
-      });
-      reply = data;
-      codexThreadId = threadId;
-      threadProvider = activeProvider;
-    }
-
-    // Codex succeeded — commit the user turn and the reply atomically.
-    const reloaded = loadWorkContext(docId);
-    const liveChat = reloaded.chats.find((c) => c.id === chat.id);
-    if (!liveChat) return NextResponse.json({ error: "chat vanished" }, { status: 500 });
-    const assistantMsg: ChatMessage = {
-      role: "assistant",
-      content: reply.reply,
-      ts: Date.now(),
-    };
-    // First user message becomes the chat title if still unnamed.
-    if (liveChat.title === "New chat" && liveChat.messages.length === 0) {
-      liveChat.title = message.slice(0, 60);
-    }
-    liveChat.messages.push(userMsg, assistantMsg);
-    liveChat.updatedAt = assistantMsg.ts;
-    if (codexThreadId) {
-      liveChat.codexThreadId = codexThreadId;
-      liveChat.threadProvider = threadProvider ?? activeProvider;
-    } else {
-      // No native thread this turn (e.g. Gemini) — drop any stale id so the
-      // next turn rebuilds full context instead of resuming a dead thread.
-      liveChat.codexThreadId = undefined;
-      liveChat.threadProvider = undefined;
-    }
-    saveWorkContext(reloaded);
-
-    // NB: the knowledge-graph evaluation is intentionally NOT scheduled here.
-    // The client triggers a single pass when the student leaves the Chat tab
-    // (see viewer-client), so a multi-message, multi-thread chat session costs
-    // exactly one evaluation instead of one per reply.
-
-    return NextResponse.json({
-      chat: liveChat,
-      reply: assistantMsg,
-    });
+  if (body.action !== "send") return NextResponse.json({ error: "Action inconnue." }, { status: 400 });
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+  if (!message || message.length > 100_000) return NextResponse.json({ error: "Le message est vide ou trop long." }, { status: 400 });
+  if (body.selection != null && (typeof body.selection !== "string" || body.selection.length > 50_000)) return NextResponse.json({ error: "Sélection invalide ou trop longue." }, { status: 400 });
+  if (typeof body.pageIndex !== "number" || !Number.isInteger(body.pageIndex) || body.pageIndex < 0 || !doc.extracted.pages.some((page) => page.pageIndex === body.pageIndex)) {
+    return NextResponse.json({ error: "La page consultée est invalide." }, { status: 400 });
   }
-
-  return NextResponse.json({ error: "unknown action" }, { status: 400 });
+  const pageIndex = body.pageIndex;
+  const selection = typeof body.selection === "string" ? body.selection.trim() : undefined;
+  const chat = wc.chats.find((item) => item.id === body.chatId);
+  if (!chat) return NextResponse.json({ error: "Discussion introuvable." }, { status: 404 });
+  if (readPreparation(docId)?.status !== "ready") return NextResponse.json({ error: "La préparation complète du PDF doit être terminée avant de discuter." }, { status: 409 });
+  const lockKey = `${docId}:${chat.id}`;
+  if (activeChats.has(lockKey)) return NextResponse.json({ error: "Une réponse est déjà en cours dans cette discussion." }, { status: 409 });
+  const userMsg: ChatMessage = { role: "user", content: message, ts: Date.now(), pageIndex, ...(selection ? { selection } : {}) };
+  const turnInput = `CURRENT VIEWED PAGE: ${pageIndex + 1} (PDF page number, captured at send time).\n${selection ? `SELECTED SOURCE PASSAGE (quoted evidence):\n${JSON.stringify(selection)}\n` : ""}\nUSER REQUEST:\n${message}`;
+  const canResume = !!chat.codexThreadId && chat.threadProvider === "codex" && chat.documentContextVersion === CONTEXT_VERSION;
+  const input = canResume ? turnInput : `${DOCUMENT_CHAT_INSTRUCTIONS}\n\n${buildPreparedContext(docId)}\n\nPREVIOUS CONVERSATION:\n${chat.messages.map((item) => `${item.role.toUpperCase()}${item.pageIndex != null ? ` [viewed PDF page ${item.pageIndex + 1}]` : ""}: ${item.content}`).join("\n\n")}\n\n${turnInput}`;
+  activeChats.add(lockKey);
+  const abort = new AbortController();
+  const onAbort = () => abort.abort();
+  req.signal.addEventListener("abort", onAbort, { once: true });
+  if (req.signal.aborted) abort.abort();
+  const encoder = new TextEncoder();
+  let closed = false;
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const emit = (event: object) => {
+        if (closed) return;
+        try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)); } catch { closed = true; abort.abort(); }
+      };
+      let firstTextMs: number | null = null;
+      let firstEventMs: number | null = null;
+      emit({ type: "status", text: `Page ${pageIndex + 1} prise en compte…` });
+      const heartbeat = setInterval(() => {
+        if (!closed) { try { controller.enqueue(encoder.encode(": keepalive\n\n")); } catch { closed = true; abort.abort(); } }
+      }, 15_000);
+      try {
+        const result = await runDocumentAI({
+          input, ...(canResume ? { threadId: chat.codexThreadId } : {}), signal: abort.signal,
+          onEvent(event) {
+            if (firstEventMs == null) firstEventMs = Date.now() - startedAt;
+            if (event.type === "text" && event.text && firstTextMs == null) firstTextMs = Date.now() - startedAt;
+            emit(event);
+          },
+        });
+        if (abort.signal.aborted) throw new DOMException("Requête annulée.", "AbortError");
+        const latest = loadWorkContext(docId);
+        const live = latest.chats.find((item) => item.id === chat.id);
+        if (!live) throw new Error("La discussion a été supprimée pendant la réponse.");
+        const assistantMsg: ChatMessage = { role: "assistant", content: result.text, ts: Date.now(), pageIndex };
+        if (["New chat", "Nouvelle discussion"].includes(live.title) && !live.messages.length) live.title = message.slice(0, 60);
+        live.messages.push(userMsg, assistantMsg);
+        live.updatedAt = assistantMsg.ts;
+        live.codexThreadId = result.threadId;
+        live.threadProvider = "codex";
+        live.documentContextVersion = CONTEXT_VERSION;
+        saveWorkContext(latest);
+        const timing = { firstEventMs, firstTextMs, totalMs: Date.now() - startedAt, resumed: canResume };
+        console.info("[document-chat]", JSON.stringify(timing));
+        emit({ type: "done", chat: live, reply: assistantMsg, timing });
+      } catch (error) {
+        // No silent retry. A failed native turn may already have reached the model.
+        const latest = loadWorkContext(docId);
+        const live = latest.chats.find((item) => item.id === chat.id);
+        if (live && live.codexThreadId === chat.codexThreadId) {
+          delete live.codexThreadId;
+          delete live.documentContextVersion;
+          saveWorkContext(latest);
+        }
+        emit({ type: "error", error: error instanceof Error ? error.message : "La réponse a échoué." });
+      } finally {
+        clearInterval(heartbeat);
+        activeChats.delete(lockKey);
+        req.signal.removeEventListener("abort", onAbort);
+        if (!closed) { closed = true; controller.close(); }
+      }
+    },
+    cancel() { closed = true; abort.abort(); },
+  });
+  return new Response(stream, { headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" } });
 }
 
-export async function DELETE(
-  req: Request,
-  ctx: { params: Promise<{ docId: string }> },
-) {
+export async function DELETE(req: Request, ctx: RouteContext) {
   const { docId } = await ctx.params;
-  if (!getDoc(docId)) {
-    return NextResponse.json({ error: "doc not found" }, { status: 404 });
-  }
-  const url = new URL(req.url);
-  const chatId = url.searchParams.get("chatId");
-  if (!chatId) return NextResponse.json({ error: "chatId required" }, { status: 400 });
+  if (!validDocId(docId) || !getDoc(docId)) return NextResponse.json({ error: "Document introuvable." }, { status: 404 });
+  const chatId = new URL(req.url).searchParams.get("chatId");
+  if (!chatId) return NextResponse.json({ error: "Discussion requise." }, { status: 400 });
+  if (activeChats.has(`${docId}:${chatId}`)) return NextResponse.json({ error: "Arrêtez la réponse avant de supprimer la discussion." }, { status: 409 });
   const wc = loadWorkContext(docId);
-  wc.chats = wc.chats.filter((c) => c.id !== chatId);
+  wc.chats = wc.chats.filter((item) => item.id !== chatId);
   saveWorkContext(wc);
   return NextResponse.json({ ok: true });
 }

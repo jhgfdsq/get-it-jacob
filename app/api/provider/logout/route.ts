@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: disconnect reader runtime too.
 /**
  * POST /api/provider/logout  body: { provider?: ProviderName }
  *
@@ -11,6 +12,7 @@
 
 import { NextResponse } from "next/server";
 import { spawnSync } from "node:child_process";
+import { clearReaderAuth } from "@/lib/clear-reader-auth";
 import { runLogout } from "@/lib/codex-account";
 import { loadSettings, saveSettings } from "@/lib/settings-store";
 import { resolveBundledBinary, augmentedPath } from "@/lib/providers/cli-runner";
@@ -30,6 +32,7 @@ export async function POST(req: Request) {
 
   let ok = false;
   if (provider === "codex") {
+    clearReaderAuth();
     ok = runLogout();
   } else if (provider === "claude") {
     const bin = resolveBundledBinary("claude");

@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 /**
  * POST /api/upload
  *   multipart/form-data:
@@ -18,7 +19,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   extractPdf,
-  assessPdfQuality,
   PdfUnsupportedError,
   MAX_PDF_PAGES,
   type ExtractedPdf,
@@ -32,6 +32,7 @@ import {
 } from "@/lib/md-to-pdf";
 import { ensureDocDir, pdfPath } from "@/lib/paths";
 import { getDoc, newDocId, saveDoc } from "@/lib/store";
+import { startPreparation } from "@/lib/preparation";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -52,14 +53,10 @@ const SAMPLE_NAME_TO_DOC_ID: Record<string, string> = {
 function rejectionMessage(reason: PdfRejectReason, stats?: PdfQualityStats): string {
   switch (reason) {
     case "too_many_pages":
-      return `This document has ${stats?.numPages ?? "too many"} pages. Get It. supports PDFs up to ${MAX_PDF_PAGES} pages — try a single chapter or a shorter export.`;
-    case "no_text":
-      return "This PDF has almost no selectable text. Get It. reads the text layer of a document, not pictures of pages — this looks like a scan or an image-only export. Try a digital, text-based PDF (one where you can select the text in a reader).";
-    case "image_dominant":
-      return `This looks like a scanned or image-heavy PDF — only ${stats?.textPages ?? 0} of ${stats?.numPages ?? 0} pages have a usable text layer. Get It. reads text, not images, so too much of this document would be lost. Try a digital, text-based PDF.`;
+      return `Ce document contient ${stats?.numPages ?? "trop de"} pages. La limite est de ${MAX_PDF_PAGES} pages. Importez un chapitre ou un extrait plus court.`;
     case "unreadable":
     default:
-      return "This PDF couldn't be read — it may be encrypted, password-protected, or corrupted. Try re-exporting it or removing protection, then upload again.";
+      return "Ce PDF est illisible, protégé par mot de passe ou endommagé. Retirez sa protection ou exportez-le à nouveau.";
   }
 }
 
@@ -90,6 +87,7 @@ export async function POST(req: Request) {
       if (existing) {
         return NextResponse.json({
           docId: existing.id,
+          preparation: startPreparation(existing.id),
           filename: existing.filename,
           pdfUrl: existing.pdfUrl,
           numPages: existing.extracted.numPages,
@@ -110,6 +108,7 @@ export async function POST(req: Request) {
       if (!(file instanceof Blob)) {
         return NextResponse.json({ error: "no file" }, { status: 400 });
       }
+      if (file.size > 80 * 1024 * 1024) return NextResponse.json({ error: "Le fichier dépasse la limite de 80 Mo." }, { status: 413 });
       buffer = Buffer.from(await file.arrayBuffer());
       const fname = (file as unknown as { name?: string }).name;
       if (fname) filename = fname.replace(/[^a-z0-9._-]/gi, "_");
@@ -160,14 +159,8 @@ export async function POST(req: Request) {
     return rejectResponse("unreadable");
   }
 
-  // Text-coverage gate. Samples are curated and known-good, so they skip it;
-  // real uploads must carry enough machine-readable text to study from.
-  if (!presetDocId) {
-    const quality = assessPdfQuality(extracted);
-    if (!quality.ok) {
-      return rejectResponse(quality.reason as PdfRejectReason, quality.stats);
-    }
-  }
+  // Image-only and scanned PDFs are accepted: every page is rendered and read
+  // during the one-time visual preparation, in addition to the original text.
 
   const docId = presetDocId ?? newDocId();
   ensureDocDir(docId);
@@ -185,6 +178,7 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     docId,
+    preparation: startPreparation(docId),
     filename,
     pdfUrl,
     numPages: extracted.numPages,

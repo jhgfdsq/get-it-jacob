@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: isolated document storage.
 /**
  * Single source of truth for every on-disk path the app uses.
  *
@@ -36,7 +37,7 @@ function assertValidDocId(docId: string): void {
   }
 }
 
-const APP_DIR_NAME = "get-it";
+const APP_DIR_NAME = "get-it-jacob";
 
 function defaultUserDataDir(): string {
   const home = os.homedir();

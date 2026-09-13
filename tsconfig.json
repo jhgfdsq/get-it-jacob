@@ -1,7 +1,12 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +24,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -30,5 +37,13 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "electron/codex-bin", "electron/claude-bin", "electron/gemini-bin", "electron/pi-bin"]
+  "exclude": [
+    "node_modules",
+    "electron/codex-bin",
+    "electron/claude-bin",
+    "electron/gemini-bin",
+    "electron/pi-bin",
+    "work",
+    "dist-electron"
+  ]
 }

@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
 /**
@@ -76,7 +77,11 @@ export default function CodexHealthBanner() {
   const [provider, setProvider] = useState<ProviderName>("codex");
   const [dismissedSerial, setDismissedSerial] = useState<number>(-1);
   const [reconnecting, setReconnecting] = useState(false);
-  const [, force] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+
+  const healthOk = health?.ok;
+  const healthKind = health?.kind;
+  const healthRetryAt = health?.retryAt;
 
   // Fetch health + active provider
   useEffect(() => {
@@ -90,7 +95,7 @@ export default function CodexHealthBanner() {
         if (cancelled) return;
         if (healthRes.ok) {
           const j = (await healthRes.json()) as Health;
-          if (!cancelled) setHealth(j);
+          if (!cancelled) { setHealth(j); setNow(Date.now()); }
         }
         if (settingsRes.ok) {
           const s = (await settingsRes.json()) as { provider?: ProviderName };
@@ -101,19 +106,19 @@ export default function CodexHealthBanner() {
       }
     };
     fetchOnce();
-    const id = setInterval(fetchOnce, health && !health.ok ? 2000 : 8000);
+    const id = setInterval(fetchOnce, healthOk === false ? 2000 : 8000);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [health?.ok]);
+  }, [healthOk]);
 
   // Tick once a second for the rate-limit countdown.
   useEffect(() => {
-    if (!health || health.ok || health.kind !== "rate_limit" || !health.retryAt) return;
-    const id = setInterval(() => force((t) => t + 1), 1000);
+    if (healthOk !== false || healthKind !== "rate_limit" || !healthRetryAt) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [health?.ok, health?.kind, health?.retryAt]);
+  }, [healthOk, healthKind, healthRetryAt]);
 
   const label = PROVIDER_LABELS[provider];
 
@@ -194,7 +199,7 @@ export default function CodexHealthBanner() {
           ? "5-hour"
           : "current";
     if (view.retryAt) {
-      const remaining = view.retryAt - Date.now();
+      const remaining = view.retryAt - now;
       title = `${label} ${win} limit reached`;
       body = (
         <>

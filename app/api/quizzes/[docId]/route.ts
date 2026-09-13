@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: no automatic knowledge evaluation.
 /**
  * Quizzes.
  *
@@ -33,7 +34,7 @@ import {
   type QuizGenerateResult,
 } from "@/lib/schemas-kg";
 import { loadKG } from "@/lib/kg";
-import { scheduleEvaluation } from "@/lib/kg-runner";
+
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -213,7 +214,7 @@ export async function POST(
     if (!session.endedAt) {
       session.endedAt = Date.now();
       saveWorkContext(wc);
-      scheduleEvaluation(docId);
+
     }
     return NextResponse.json({ session });
   }

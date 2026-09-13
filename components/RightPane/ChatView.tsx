@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
 /**
@@ -13,184 +14,125 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Trash2, Send, MessageSquare, RefreshCw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { ChatThread } from "@/lib/work-context-types";
-import { consumePrefill } from "./prefill";
 
-type Props = { docId: string };
 
-export default function ChatView({ docId }: Props) {
+export type SelectionRequest = { id: number; action: "discuss" | "explain"; text: string; pageIndex: number };
+type Snapshot = { pageIndex: number; selection?: string };
+type Props = { docId: string; pageIndex: number; selectionRequest?: SelectionRequest | null };
+
+export default function ChatView({ docId, pageIndex, selectionRequest }: Props) {
   const [chats, setChats] = useState<ChatThread[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [attached, setAttached] = useState<Snapshot | null>(null);
   const [sending, setSending] = useState(false);
   const [creating, setCreating] = useState(false);
-  // The last turn that failed to get a reply, scoped to its chat. The user
-  // message is kept visible in the thread; this drives an inline "couldn't
-  // reach Codex — Retry" row beneath it. Sending never auto-retries.
-  const [failed, setFailed] = useState<{
-    chatId: string;
-    message: string;
-    error: string;
-  } | null>(null);
+  const [partial, setPartial] = useState("");
+  const [status, setStatus] = useState("");
+  const [sendingChatId, setSendingChatId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState<({ chatId: string; message: string; error: string } & Snapshot) | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const busyRef = useRef(false);
+  const seenSelection = useRef<number | undefined>(undefined);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
 
-  // Initial fetch + handle prefill from a "Chat about this concept" jump
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/chat/${docId}`)
-      .then((r) => r.json())
-      .then(async (j: { chats: ChatThread[] }) => {
-        if (cancelled) return;
-        setChats(j.chats);
-        // One-shot prefill from a knowledge-graph jump.
-        const prefill = consumePrefill(docId, "chat");
-        if (prefill) {
-          // Create a fresh chat for this concept and seed the draft.
-          const r = await fetch(`/api/chat/${docId}`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ action: "create", title: prefill }),
-          });
-          const { chat } = (await r.json()) as { chat: ChatThread };
-          if (cancelled) return;
-          setChats((prev) => [chat, ...(prev ?? j.chats)]);
-          setActiveId(chat.id);
-          setDraft(`Spiegami "${prefill}".`);
-          return;
-        }
-        if (j.chats.length && !activeId) setActiveId(j.chats[0].id);
-      })
-      .catch(() => {
-        if (!cancelled) setChats([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetch(`/api/chat/${docId}`).then(async (r) => {
+      if (!r.ok) throw new Error("Impossible de charger les conversations.");
+      const j = await r.json() as { chats: ChatThread[] };
+      if (!cancelled) { setChats(j.chats); setActiveId(j.chats[0]?.id ?? null); }
+    }).catch((e) => { if (!cancelled) { setChats([]); setError(e.message); } });
+    return () => { cancelled = true; abortRef.current?.abort(); };
   }, [docId]);
 
-  const active = useMemo(
-    () => chats?.find((c) => c.id === activeId) ?? null,
-    [chats, activeId],
-  );
-
-  // Auto-scroll to the bottom when messages change.
   useEffect(() => {
-    if (messagesRef.current) {
-      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-    }
-  }, [active?.messages.length, sending]);
+    if (!selectionRequest || seenSelection.current === selectionRequest.id) return;
+    seenSelection.current = selectionRequest.id;
+    setAttached({ pageIndex: selectionRequest.pageIndex, selection: selectionRequest.text });
+    setDraft(selectionRequest.action === "explain" ? "Explique ce passage en détail, avec des exemples et le contexte du document." : "À propos de ce passage : ");
+    draftRef.current?.focus();
+  }, [selectionRequest]);
 
-  const createChat = useCallback(async () => {
-    setCreating(true);
-    try {
-      const r = await fetch(`/api/chat/${docId}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "create" }),
-      });
-      const j = (await r.json()) as { chat: ChatThread };
-      setChats((prev) => [j.chat, ...(prev ?? [])]);
-      setActiveId(j.chat.id);
-    } finally {
-      setCreating(false);
-    }
+  const active = useMemo(() => chats?.find((c) => c.id === activeId) ?? null, [chats, activeId]);
+  useEffect(() => { if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight; }, [active?.messages.length, partial, status, sending]);
+
+  const makeChat = useCallback(async () => {
+    const r = await fetch(`/api/chat/${docId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "create" }) });
+    const j = await r.json();
+    if (!r.ok || !j.chat) throw new Error(j.error ?? "Impossible de créer la conversation.");
+    const chat = j.chat as ChatThread;
+    setChats((prev) => [chat, ...(prev ?? [])]); setActiveId(chat.id);
+    return chat.id;
   }, [docId]);
+  const createChat = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true; setCreating(true); setError(null);
+    try { await makeChat(); } catch (e) { setError((e as Error).message); } finally { setCreating(false); busyRef.current = false; }
+  };
+  const deleteChat = async (id: string) => {
+    if (sending || !window.confirm("Supprimer cette conversation ?")) return;
+    const r = await fetch(`/api/chat/${docId}?chatId=${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!r.ok) { setError("Impossible de supprimer la conversation."); return; }
+    setChats((prev) => prev?.filter((c) => c.id !== id) ?? []);
+    if (activeId === id) setActiveId(null);
+  };
 
-  const deleteChat = useCallback(
-    async (id: string) => {
-      await fetch(`/api/chat/${docId}?chatId=${encodeURIComponent(id)}`, {
-        method: "DELETE",
-      });
-      setChats((prev) => (prev ? prev.filter((c) => c.id !== id) : prev));
-      if (activeId === id) setActiveId(null);
-    },
-    [docId, activeId],
-  );
-
-  // Ship one turn to the server and fold the result back in. On success the
-  // server returns the full chat (user message + reply, committed together),
-  // so we replace local state with it — the optimistic user bubble is reconciled
-  // with no duplicate. On failure we record `failed` (no auto-retry) so the
-  // thread shows a manual Retry control. Used by both a fresh send and Retry.
-  const deliver = useCallback(
-    async (chatId: string, message: string) => {
-      setSending(true);
-      setFailed(null);
-      try {
-        const r = await fetch(`/api/chat/${docId}`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "send", chatId, message }),
-        });
-        if (!r.ok) {
-          const txt = await r.text().catch(() => "");
-          throw new Error(`reply failed (${r.status})${txt ? `: ${txt.slice(0, 120)}` : ""}`);
+  const deliver = useCallback(async (chatId: string, message: string, snapshot: Snapshot) => {
+    setSending(true); setSendingChatId(chatId); setFailed(null); setPartial(""); setStatus("Connexion…");
+    const controller = new AbortController(); abortRef.current = controller;
+    try {
+      const r = await fetch(`/api/chat/${docId}`, { method: "POST", signal: controller.signal,
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "send", chatId, message, ...snapshot }) });
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error ?? `Erreur ${r.status}`); }
+      if (!r.body) throw new Error("Flux de réponse indisponible.");
+      const reader = r.body.getReader(); const decoder = new TextDecoder(); let buffer = ""; let done = false;
+      const event = (raw: string) => {
+        const data = raw.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trimStart()).join("\n");
+        if (!data) return;
+        const item = JSON.parse(data);
+        if (item.type === "error") throw new Error(item.error ?? "La réponse a échoué.");
+        if (item.type === "status") setStatus(item.text);
+        if (item.type === "text") { setPartial(item.text); setStatus(""); }
+        if (item.type === "done") {
+          if (!item.chat) throw new Error("Conversation absente de la réponse.");
+          setChats((prev) => prev?.map((c) => c.id === chatId ? item.chat : c) ?? [item.chat]);
+          setPartial(""); done = true;
         }
-        const j = (await r.json()) as { chat: ChatThread };
-        setChats((prev) =>
-          prev ? prev.map((c) => (c.id === chatId ? j.chat : c)) : prev,
-        );
-        // Tell the viewer a reply landed. It batches a single knowledge-graph
-        // evaluation when the student leaves the Chat tab, instead of one per
-        // message.
-        window.dispatchEvent(
-          new CustomEvent("getit:chat-sent", { detail: { docId } }),
-        );
-      } catch (e) {
-        setFailed({ chatId, message, error: (e as Error).message });
-      } finally {
-        setSending(false);
+      };
+      while (true) {
+        const chunk = await reader.read(); buffer += decoder.decode(chunk.value, { stream: !chunk.done }).replace(/\r\n/g, "\n");
+        let split;
+        while ((split = buffer.indexOf("\n\n")) >= 0) { const raw = buffer.slice(0, split); buffer = buffer.slice(split + 2); event(raw); }
+        if (chunk.done) break;
       }
-    },
-    [docId],
-  );
+      if (buffer.trim()) event(buffer);
+      if (!done) throw new Error("La connexion a été interrompue avant la fin de la réponse.");
+    } catch (e) {
+      setFailed({ chatId, message, ...snapshot, error: controller.signal.aborted ? "Réponse arrêtée." : (e as Error).message });
+    } finally { setSending(false); setStatus(""); busyRef.current = false; abortRef.current = null; }
+  }, [docId]);
 
   const send = useCallback(async () => {
-    const message = draft.trim();
-    if (!message || sending) return;
-    let chatId = activeId;
-    if (!chatId) {
-      // Auto-create a chat on first send.
-      const r = await fetch(`/api/chat/${docId}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action: "create" }),
-      });
-      const j = (await r.json()) as { chat: ChatThread };
-      chatId = j.chat.id;
-      setChats((prev) => [j.chat, ...(prev ?? [])]);
-      setActiveId(j.chat.id);
-    }
-    // Optimistic: append the user message immediately.
-    const optimisticUser = {
-      role: "user" as const,
-      content: message,
-      ts: Date.now(),
-    };
-    setChats((prev) =>
-      prev
-        ? prev.map((c) =>
-            c.id === chatId
-              ? { ...c, messages: [...c.messages, optimisticUser], updatedAt: optimisticUser.ts }
-              : c,
-          )
-        : prev,
-    );
-    setDraft("");
-    await deliver(chatId, message);
-  }, [activeId, docId, draft, sending, deliver]);
-
-  // Re-send the last failed turn. Its user bubble is already in the thread, so
-  // we just re-deliver — no second optimistic append, no duplicate.
-  const retry = useCallback(() => {
-    if (!failed || sending) return;
-    void deliver(failed.chatId, failed.message);
-  }, [failed, sending, deliver]);
+    const message = draft.trim(); if (!message || busyRef.current) return;
+    busyRef.current = true; setSending(true); setError(null);
+    // Snapshot before any asynchronous creation: scrolling afterwards never changes this turn.
+    const snapshot = attached ?? { pageIndex };
+    try {
+      const chatId = activeId ?? await makeChat();
+      const user = { role: "user" as const, content: message, ts: Date.now(), ...snapshot };
+      setChats((prev) => prev?.map((c) => c.id === chatId ? { ...c, messages: [...c.messages, user], updatedAt: user.ts } : c) ?? []);
+      setDraft(""); setAttached(null); await deliver(chatId, message, snapshot);
+    } catch (e) { setError((e as Error).message); setSending(false); busyRef.current = false; }
+  }, [draft, attached, pageIndex, activeId, makeChat, deliver]);
+  const retry = () => { if (!failed || busyRef.current) return; busyRef.current = true; void deliver(failed.chatId, failed.message, { pageIndex: failed.pageIndex, selection: failed.selection }); };
 
   if (chats === null) {
     return (
       <div className="flex h-full items-center justify-center text-[12px] text-[var(--ink-500)]">
-        <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" /> loading chats…
+        <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" /> Chargement des conversations…
       </div>
     );
   }
@@ -198,19 +140,19 @@ export default function ChatView({ docId }: Props) {
   return (
     <div className="flex h-full">
       {/* Chat list */}
-      <aside className="flex w-44 shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-canvas)]">
+      <aside className="flex w-32 shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-canvas)]">
         <button
           type="button"
           onClick={createChat}
-          disabled={creating}
+          disabled={creating || sending}
           className="m-2 flex items-center justify-center gap-1.5 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] py-1.5 text-[12px] font-medium text-[var(--ink-900)] hover:bg-[var(--surface-sunken)] disabled:opacity-60"
         >
-          <Plus className="h-3.5 w-3.5" /> New chat
+          <Plus className="h-3.5 w-3.5" /> Nouveau chat
         </button>
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
           {chats.length === 0 ? (
             <p className="px-2 py-3 text-[11.5px] leading-relaxed text-[var(--ink-400)]">
-              No conversations yet. Start one to ask anything about this document.
+              Vos conversations sur ce PDF apparaîtront ici.
             </p>
           ) : (
             chats.map((c) => (
@@ -234,7 +176,7 @@ export default function ChatView({ docId }: Props) {
                   type="button"
                   onClick={() => deleteChat(c.id)}
                   className="invisible h-5 w-5 shrink-0 rounded text-[var(--ink-400)] hover:bg-[var(--surface-sunken)] hover:text-rose-600 group-hover:visible"
-                  title="Delete chat"
+                  title="Supprimer le chat"
                 >
                   <Trash2 className="m-auto h-3 w-3" />
                 </button>
@@ -251,8 +193,7 @@ export default function ChatView({ docId }: Props) {
             <div className="max-w-sm">
               <MessageSquare className="mx-auto mb-3 h-7 w-7 text-[var(--ink-400)]" />
               <p className="text-[13.5px] leading-relaxed text-[var(--ink-500)]">
-                Ask anything about this document. Each conversation is saved and feeds the
-                knowledge graph evaluator when you leave the Chat tab.
+                Posez une question sur le document ou sur la page consultée. Chaque conversation est sauvegardée. Sélectionnez un passage du PDF pour préciser votre demande.
               </p>
             </div>
           </div>
@@ -260,26 +201,24 @@ export default function ChatView({ docId }: Props) {
           <div ref={messagesRef} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
             {active.messages.length === 0 && (
               <p className="text-center text-[12px] text-[var(--ink-400)]">
-                Type your first question below.
+                Posez votre première question ci-dessous.
               </p>
             )}
             {active.messages.map((m, i) => (
-              <Bubble key={i} role={m.role} content={m.content} />
+              <div key={i}>{m.role === "user" && m.pageIndex !== undefined && <p className="mb-1 text-right text-[10px] text-[var(--ink-400)]">Page {m.pageIndex + 1} du PDF</p>}<Bubble role={m.role} content={m.content} /></div>
             ))}
-            {sending && (
-              <Bubble role="assistant" content="…" pulsing />
-            )}
+            {sendingChatId === active.id && (partial || sending) && <Bubble role="assistant" content={partial || status || "…"} pulsing={!partial} />}
             {failed && failed.chatId === active.id && !sending && (
               <div className="mb-3 flex flex-col items-start gap-1.5">
                 <p className="text-[11.5px] leading-relaxed text-rose-700 dark:text-rose-300">
-                  Couldn&apos;t get a reply — {failed.error}
+                  {failed.error}
                 </p>
                 <button
                   type="button"
                   onClick={retry}
                   className="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[12px] font-medium text-rose-700 transition hover:bg-rose-100 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300 dark:hover:bg-rose-900"
                 >
-                  <RefreshCw className="h-3 w-3" /> Retry
+                  <RefreshCw className="h-3 w-3" /> Réessayer (page {failed.pageIndex + 1})
                 </button>
               </div>
             )}
@@ -293,8 +232,12 @@ export default function ChatView({ docId }: Props) {
           }}
           className="shrink-0 border-t border-[var(--border-subtle)] bg-[var(--surface-raised)] p-3"
         >
+          <div className="mb-2 flex items-center gap-2 text-[11px] text-[var(--ink-500)]"><span data-testid="page-context">Contexte : page {pageIndex + 1} du PDF</span>{sending && <span className="ml-auto">{status || "Réponse en cours…"}</span>}</div>
+          {attached?.selection && <div className="mb-2 rounded-md bg-[var(--surface-sunken)] p-2 text-[11px] text-[var(--ink-700)]"><button type="button" onClick={() => setAttached(null)} className="float-right px-1" aria-label="Retirer le passage">×</button><span>Passage sélectionné · page {attached.pageIndex + 1}</span><p className="mt-1 line-clamp-3">{attached.selection}</p></div>}
+          {error && <p role="alert" className="mb-2 text-xs text-red-700">{error}</p>}
           <div className="flex items-end gap-2">
             <textarea
+              ref={draftRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -303,19 +246,19 @@ export default function ChatView({ docId }: Props) {
                   void send();
                 }
               }}
-              placeholder="Ask a question about this document…"
+              placeholder="Que souhaitez-vous comprendre ?"
               rows={2}
               className="min-h-[44px] flex-1 resize-none rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3 py-2 text-[13px] leading-relaxed text-[var(--ink-900)] focus:border-[var(--accent-500)] focus:outline-none"
               disabled={sending}
             />
-            <button
+            {sending ? <button type="button" onClick={() => abortRef.current?.abort()} className="h-[44px] rounded-md border border-[var(--border-subtle)] px-3 text-xs text-[var(--ink-900)]">Arrêter</button> : <button
               type="submit"
               disabled={sending || !draft.trim()}
               className="flex h-[44px] w-[44px] items-center justify-center rounded-md bg-[var(--button-primary-bg)] text-white hover:bg-[var(--button-primary-hover)] disabled:opacity-40"
-              title="Send (Enter)"
+              title="Envoyer (Entrée)"
             >
               <Send className="h-4 w-4" />
-            </button>
+            </button>}
           </div>
         </form>
       </section>
@@ -358,6 +301,7 @@ function Bubble({
                 </pre>
               ),
               code: ({ className, children, node, ...props }) => {
+                void node;
                 const text = String(children);
                 const isInline = !className && !text.includes("\n");
                 return isInline ? (

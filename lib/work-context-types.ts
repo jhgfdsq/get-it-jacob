@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 /**
  * Pure types for the work context.
  *
@@ -11,6 +12,10 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   ts: number;
+  /** Zero-based PDF page captured when this message was sent. */
+  pageIndex?: number;
+  /** User-selected source passage, if any. */
+  selection?: string;
 };
 
 export type ChatThread = {
@@ -29,6 +34,8 @@ export type ChatThread = {
    *  so we only resume it when the active provider matches; otherwise we
    *  transparently migrate by starting a fresh thread with the full history. */
   threadProvider?: ProviderName;
+  /** Separates new reader-native sessions from the old coding-agent sessions. */
+  documentContextVersion?: number;
 };
 
 export type Flashcard = {

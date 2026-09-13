@@ -1,185 +1,42 @@
-<div align="center">
+# Get It Jacob
 
-# Get It.
+Édition personnelle macOS Apple Silicon de [Get It](https://github.com/beltromatti/get-it), conservant son lecteur et son style visuel. Application locale, PDF à gauche, conversation à droite, connexion via l’abonnement ChatGPT.
 
-### Read it. See it. Get it.
+## Utilisation
 
-**The study companion that turns a PDF into a measurable mastery map. Built around the document, not in place of it.**
+Ouvrir **Get It Jacob.app**, puis déposer un PDF. La préparation examine chaque page sous forme de texte et d’image, conserve les notes visuelles, puis initialise la première conversation avec le contexte complet. Le lecteur s’ouvre lorsque tout est prêt. Les scans sans texte sont acceptés.
 
-[![GDG AI Hack 2026](https://img.shields.io/badge/GDG%20AI%20Hack-Milan%202026-1a1a2e?style=for-the-badge)](https://gdg.community.dev/)
-[![Website](https://img.shields.io/badge/Website-getit.noesisai.it-5b66f1?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTIiIHI9IjEwIi8+PGxpbmUgeDE9IjIiIHkxPSIxMiIgeDI9IjIyIiB5Mj0iMTIiLz48cGF0aCBkPSJNMTIgMmExNS4zIDE1LjMgMCAwIDEgNCAxMCAxNS4zIDE1LjMgMCAwIDEtNCAxMCAxNS4zIDE1LjMgMCAwIDEtNC0xMCAxNS4zIDE1LjMgMCAwIDEgNC0xMHoiLz48L3N2Zz4=&logoColor=white)](https://getit.noesisai.it)
-[![Bring your own AI](https://img.shields.io/badge/Bring%20your%20own-AI-111113?style=for-the-badge)](#bring-your-own-ai)
+Le numéro de la page visible est joint à chaque question. Une page mentionnée explicitement dans la question ou un passage sélectionné est prioritaire. La conversation existante est reprise entre les messages et après redémarrage.
 
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
-[![Electron](https://img.shields.io/badge/Electron-33-2C2C2C?logo=electron&logoColor=9FEAF9)](https://www.electronjs.org/)
-[![React 19](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Tailwind CSS 4](https://img.shields.io/badge/Tailwind-4.x-38BDF8?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-[![Three.js](https://img.shields.io/badge/Three.js-r184-000000?logo=threedotjs&logoColor=white)](https://threejs.org)
-[![pdf.js](https://img.shields.io/badge/pdf.js-5.x-F40F02?logo=mozilla&logoColor=white)](https://mozilla.github.io/pdf.js/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](#license)
+Sélectionner un passage affiche **Discuter**, **Expliquer**, **Graphique** et **Diagramme**. Les deux premières actions préparent un message modifiable. Les visuels nécessitent une demande explicite et sont conservés dans l’onglet **Visuels**. Les graphiques affichent aussi leurs valeurs, unités et sources.
 
-<br />
+Après l’import, le défilement, la sélection et la réouverture ne déclenchent aucune analyse IA. Les anciens systèmes automatiques de détection, d’évaluation, de graphe de connaissances et de génération sont désactivés.
 
-![Get It. hero animation](hero.gif)
+## Ce qui est conservé
 
-</div>
+Les PDF, leur texte original intégral, les notes de lecture de chaque page, les conversations, les visuels et les réglages résident dans `~/Library/Application Support/get-it-jacob`. Cette bibliothèque est indépendante de celle du logiciel d’origine.
 
----
+La connexion existante est utilisée sans recopier ses identifiants dans le projet. Le moteur de lecture dispose d’un dossier de configuration et de conversation distinct, sans outils, plugins ou connecteurs de l’environnement de codage. Aucun moteur ancien n’est téléchargé automatiquement. Le moteur inclus dans cette construction locale est vérifié avant assemblage.
 
-## The problem
+## Limites explicites
 
-The student already has the PDF. They don't need another summary. They need to see the parts a textbook refuses to draw, and they need a way to prove to themselves that they have understood. Concept by concept, not page by page.
+- 150 pages maximum par document. Un document très dense peut dépasser la fenêtre de contexte du modèle, auquel cas la préparation indique une erreur au lieu de masquer des pages manquantes.
+- La préparation initiale utilise l’IA et l’abonnement. Les grands PDF peuvent prendre plusieurs minutes. Aucune durée universelle n’est garantie.
+- Les notes visuelles sont des interprétations et peuvent contenir des erreurs. Les chiffres peu lisibles sont signalés. Le PDF original reste la référence.
+- Un scan sans couche texte peut être discuté via la page courante, mais son texte ne peut pas être surligné dans le lecteur.
+- Le contexte de conversation est réutilisé. Cela ne signifie pas que les messages suivants consomment zéro token.
+- Cette construction personnelle est testée sur ce Mac Apple Silicon, avec signature locale. Elle n’est pas une distribution publique notarifiée pour tous les Mac.
 
-Today's tools measure surface area, not depth. Flashcard ratings measure recall in the moment. Mind maps measure how much you drew. Summaries measure how patient the AI was. None of them answer the only question that matters on exam day:
+## Développement
 
-> *Would I survive a question I have not seen before?*
+Node.js 22+ et npm. `npm ci`, `npm run test:reader`, `npm run lint`, `npm run build`.
 
-Get It. is the layer that answers it.
+Pour assembler localement, définir `GETIT_VERIFIED_CODEX_PATH` vers un exécutable officiel Codex récent signé OpenAI, puis lancer `npm run build:desktop:mac-arm`. Le script ne fournit pas de téléchargement de secours. La version obsolète 0.130.0 est refusée. Aucun identifiant, bibliothèque de test ou exécutable n’est inclus dans le dépôt Git.
 
-## How it works
+Tests de protocole, préparation et schémas visuels : `npm run test:reader`. Créer le PDF fictif avec `node scripts/generate-reader-fixture.cjs`. Test navigateur sur serveur local avec API simulée : `node scripts/test-reader-browser.mjs`. Contrôle Mac complet connecté, consommant de l’IA : `node scripts/test-native.mjs`. Le contrôle natif et les essais de connexion réels nécessitent un environnement local connecté.
 
-Drop a PDF — a digital, text-based one — or a Markdown (`.md`) file, which Get It. renders to a clean document on the way in. Get It. checks the file up front and turns away scans or image-only documents with a clear message, because it reads text, not pictures. Once a file clears that gate, three things start at once.
+Le workflow de publication amont est archivé dans `docs/release-upstream.yml` et n’est pas exécuté par cette édition.
 
-1. **The page tags itself.** A concept-detection agent walks every page and plants inline tag pills on the words that benefit from a picture. Each tag carries a renderer choice: 3D scene, 2D animation, formula walkthrough, plotted graph, or cited source.
-2. **The right pane fills in.** Click a tag and its visualization renders — Three.js for anatomy and molecules, Canvas for physics and chemistry animations, KaTeX-clean formulas, a plot engine for functions and distributions, authoritative quotes for legal articles and named papers. Ready tags are marked so you can tell what already exists, and a setting renders every tag automatically as you read if you prefer. When a sandbox crashes, the agent reads its own error and re-emits a fix. The student sees "repairing" instead of red text.
-3. **A knowledge graph builds itself.** Six to twenty-five concept nodes, typed edges, sized by mastery, coloured by progress, clickable for the four-axis breakdown plus the evaluator's note.
+## Origine et licence
 
-Then the loop closes. Four study tools feed one journal.
-
-| Tool | What it measures |
-|---|---|
-| 💬 **Chat** | Recall references and paraphrases. Multi-turn, multi-thread, scoped to one document. |
-| 🎴 **Flashcards** | Open-recall under self-grade. Again / Hard / Good / Easy on every card. |
-| ✅ **Quizzes** | Forced-choice discrimination. One correct answer, three plausible distractors. |
-| 💡 **Feynman** | The agent plays a curious eight-year-old. *You* teach. The strongest comprehension signal. |
-
-After every completed session the **evaluator** agent reads the journal end-to-end and updates four scores per concept node on the knowledge graph: **memory, comprehension, structure, application**. Each scored 0 to 100. Each monotone non-decreasing by a runtime clamp. The student can only progress, never regress.
-
-The four numbers are the difference between a study app and a measurement instrument.
-
-## Bring your own AI
-
-The AI side of Get It. has no business model layered on top.
-
-You sign in once with an AI account or API key you already have — through that vendor's official CLI, bundled with the app — and every agent inside Get It. runs against your own tier. There is no Get It. server, no shared key pool, no per-message metering, no "AI credits" wallet, no second subscription, and no plan to ever ship one.
-
-- **Pick the engine you already pay for.** Get It. ships with four, side by side: **OpenAI Codex** (your ChatGPT Plus / Pro / Team / Enterprise / Edu account, or an OpenAI key), **Anthropic Claude** (a Claude Pro / Max subscription, or an Anthropic key), **Google Gemini** (an API key), or **bring-your-own** — any OpenAI-compatible endpoint, including a fully local model through Ollama. Switch engines whenever you like from the setup wizard; the app picks the conversation back up mid-document.
-- **You pay for AI once.** Whichever account you choose covers everything Get It. does. A paid tier gives comfortable session headroom; free tiers sign in but their allowance is intentionally small. A local model through Ollama costs nothing at all.
-- **Your data stays yours.** Your documents and study journal never leave your computer: no accounts, no cloud sync, no document upload, no model traffic through our servers. The only thing the app sends is an anonymous open/update ping — a random install id, the app version, and your OS, nothing else — so we can count how many people Get It. is helping; set `GETIT_DISABLE_ANALYTICS=1` to turn even that off. The work-context journal is a single JSON file on your disk, downloadable in one click from the right-pane menu.
-- **Rate limits are your provider's.** When you hit one, the app shows a countdown banner, stops cleanly, and your work is saved. Nothing retries in a loop: once the window clears you pick back up with a click (re-click a concept, hit Retry on a tool).
-
-Other AI study apps wrap a marked-up subscription around a model API the vendor holds. Get It. wraps a study workflow around the access you already have — whichever vendor that is.
-
-## Install
-
-Get It. is a desktop app. Download the installer for your machine, double-click, pick your AI engine, and sign in with the account you already use (or paste an API key). Nothing else to buy.
-
-| Platform | Installer |
-|---|---|
-| macOS (Apple Silicon, M1 / M2 / M3 / M4) | `Get It-<version>-arm64.dmg` |
-| macOS (Intel) | `Get It-<version>.dmg` |
-| Windows 10 / 11 (x64) | `Get It Setup <version>.exe` |
-| Linux (x64) | `Get It-<version>.AppImage` |
-
-Every release ships on the **[Releases](https://github.com/beltromatti/get-it/releases)** page. The app checks for a newer build on every launch and offers a one-click update inside its own window.
-
-### First launch
-
-The setup wizard lets you choose your AI engine, verifies its bundled CLI, walks you through sign-in — OAuth for the account engines, an API key for the rest — and refuses to open the main window until the connection is green. Then drop a PDF or Markdown file, or open one of the five bundled samples (anatomy, classical mechanics, Italian constitution, calculus, organic chemistry). Tags, chats, flashcard decks, quizzes, Feynman sessions, and the knowledge graph all stay on your computer.
-
-### Gatekeeper and SmartScreen
-
-macOS builds (both Apple Silicon and Intel) are **signed with a paid Apple Developer ID Application certificate AND notarized by Apple**. On a fresh download from this repo's [Releases](https://github.com/beltromatti/get-it/releases) page the OS opens the app with **no Gatekeeper prompt** — the stapled notarization ticket tells Gatekeeper the binary is trusted before the network is even consulted. `spctl --assess` reports `source=Notarized Developer ID` and `xcrun stapler validate` passes on both architectures.
-
-Windows builds are not signed. The first launch shows a SmartScreen warning ("Windows protected your PC"); click **More info → Run anyway**. The warning persists because SmartScreen reputation is per-certificate and we currently don't ship a Windows code-signing cert (Microsoft's Trusted Signing service requires a paid Azure subscription that the project doesn't carry).
-
-If you ever pull a build that *wasn't* notarized — a local ad-hoc build before secrets are wired up, an old release from before v1.2.1 — macOS shows the "unidentified developer" prompt instead. The bypass is **System Settings → Privacy & Security → Open Anyway** (macOS Sequoia 15 and macOS 26 removed the older right-click → Open shortcut). Or strip the quarantine flag in one shot from the CLI: `xattr -dr com.apple.quarantine "/Applications/Get It.app"`.
-
-### Storage
-
-Everything lives under one OS-native directory.
-
-| OS | Path |
-|---|---|
-| macOS | `~/Library/Application Support/get-it/` |
-| Windows | `%APPDATA%\get-it\` |
-| Linux | `~/.local/share/get-it/` |
-
-Layout: one folder per document at `docs/<docId>/` (source PDF, extracted text cache, tags, work context, knowledge graph), a `docs.json` index at the root, a `codex-scratch/` working dir, and `logs/`. Deleting a doc from the Library wipes the whole folder.
-
-## Hack on it
-
-```bash
-git clone https://github.com/beltromatti/get-it.git
-cd get-it
-npm install
-npm run dev    # builds the Next.js standalone bundle and opens it in Electron
-```
-
-`npm run dev` exercises the full path: setup wizard, embedded server, IPC bridge. Re-run after edits.
-
-For browser-side hot reload:
-
-```bash
-npm run browser:dev    # http://localhost:3000
-```
-
-(The Electron-internal HMR loop has a known Next 16.2.6 + Turbopack + Chromium 130 hydration glitch, so browser dev or rebuild-and-test is the cleaner inner loop.)
-
-Local desktop builds, one or all targets:
-
-```bash
-npm run build && npm run electron:prepare
-
-node scripts/build-electron.mjs --target=mac-arm64   # or mac-x64 / win-x64 / linux-x64 / --all
-```
-
-Artefacts land in `dist-electron/`. Cross-arch builds pull the matching per-platform engine binaries (Codex and Claude) from npm on the fly, so you do not need an Intel Mac or a Windows VM to build for them.
-
-Releases are tag-driven. Push a `vX.Y.Z` tag to `main` and `.github/workflows/release.yml` builds every target on a native runner, attaches the `.dmg` / `.exe` / `.AppImage` to a GitHub Release, and pins the version into Info.plist and NSIS metadata from the tag itself.
-
-### Help build it
-
-Get It. is open source because the best study tool should be built in the open. We are actively looking for maintainers, contributors, designers, testers, and anyone with sharp ideas. Read **[`CONTRIBUTING.md`](CONTRIBUTING.md)** for the vision and how to get involved, then come find something to build in the **[Discord community](https://discord.gg/DpQPswRhsK)**, where we plan features, review work, and divide up tasks.
-
-## Architecture in one breath
-
-```
-upload  ─► quality gate (model-free) ─► pdfjs-dist extracts text + glyph bboxes per page
-         │
-         ├──► visualizer pipeline
-         │     ├─ batched concept-detection agent  →  DetectedConcept[] with anchor strings
-         │     │   (≤5 pages per call, concurrency 3)   (each concept carries its page)
-         │     └─ per-tag visualization-spec agent  →  3d / 2d-anim / formula / graph / 2d-text spec
-         │        (lazy: on click by default)           (server-side syntax preflight + client-side
-         │                                               runtime repair loop on sandbox crashes)
-         │
-         └──► knowledge-graph pipeline
-               ├─ kg-build agent (one-shot)            →  6–25 concept nodes + typed edges + global note
-               │  ◄── full document text                  (bounded by the 150-page upload cap)
-               └─ kg-evaluate agent (incremental)      →  per-node {memory, comprehension, structure,
-                  ◄── current graph (baseline scores)     application} 0–100, monotone non-decreasing
-                  ◄── interactions since the last pass
-```
-
-Every prompt and schema runs behind one provider router, so the same tools behave identically whether you're signed into Codex, Claude, Gemini, or your own API key. The full design rationale, the four-axis rubric, the per-doc evaluator queue, the LLM-code sandbox, the multi-provider layer, and the desktop-packaging layer are in [`technical-writeup.md`](technical-writeup.md), also rendered as [PDF](technical-writeup.pdf).
-
-## The team
-
-Built in 24 hours at **GDG AI Hack 2026, Milan**, for the **Braynr** challenge. The hackathon submission lived at commit `277ec43`. Everything past that commit is post-hackathon polish: desktop packaging, the persistent Library, the first-launch setup wizard, the quizzes tool, the in-app auto-update flow, the server-side jobs runner, multi-engine support (Codex, Claude, Gemini, or any API key), Markdown import, a dark theme, and long-document support that keeps a 100-page PDF affordable on a single AI plan. The product is the same. Only the way it gets onto a student's laptop has changed.
-
-- **[Mattia Beltrami](https://www.linkedin.com/in/mattia-beltrami/)**, Politecnico di Milano
-- **[Matteo Impieri](https://www.linkedin.com/in/matteo-impieri-5b5874331/)**, Politecnico di Milano
-- **[Filippo Difronzo](https://www.linkedin.com/in/filippo-difronzo-3a56701b1/)**, Politecnico di Milano
-- **[Luca Feggi](https://www.linkedin.com/in/luca-feggi-a643133b5/)**, Università di Padova
-
-## Notice
-
-**Get It. is an independent project. It is not affiliated with, endorsed by, or sponsored by OpenAI, Anthropic, or Google.** The app talks to each model only through that vendor's own official CLI — [Codex CLI](https://github.com/openai/codex), [Claude Code](https://github.com/anthropics/claude-code), the [Gemini CLI](https://github.com/google-gemini/gemini-cli), or any OpenAI-compatible endpoint you point it at — signed in with the end user's own account or API key. "OpenAI", "ChatGPT", "Codex", "Anthropic", "Claude", "Google", and "Gemini" are trademarks of their respective owners; we use the names only to describe what Get It. interoperates with.
-
-Your use of any model through Get It. is subject to that provider's own terms, usage policies, and privacy policy, and to the license of the CLI it ships through. Those documents are authoritative for what each service permits, how data is handled on the provider's side, and what each subscription tier covers.
-
-## License
-
-Apache License 2.0. See [`LICENSE`](LICENSE). Source is open. Contributions are welcome: see [`CONTRIBUTING.md`](CONTRIBUTING.md) and join us on [Discord](https://discord.gg/DpQPswRhsK).
+Dérivé du commit amont `ae0fa999f352b951ab8150fac5dcf9d7ab6fd9a4`, licence Apache 2.0. Voir `LICENSE`, `NOTICE` et le [README original conservé](docs/README-upstream.md). Les dépendances et moteurs conservent leurs licences respectives. Aucune affiliation ou approbation des auteurs d’origine ou d’OpenAI n’est revendiquée.

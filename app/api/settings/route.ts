@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: manual-only settings.
 /**
  * GET  /api/settings    → current persisted AppSettings (or env defaults)
  * POST /api/settings    → merge body into persisted settings
@@ -25,10 +26,7 @@ export async function POST(req: Request) {
   const b = (body && typeof body === "object" ? body : {}) as Partial<AppSettings>;
   const current = loadSettings();
   const next: AppSettings = {
-    provider:
-      ["codex", "gemini", "claude", "pi"].includes(b.provider as string)
-        ? b.provider!
-        : current.provider,
+    provider: "codex",
     codexModelFast: typeof b.codexModelFast === "string" ? b.codexModelFast : current.codexModelFast,
     codexModelSmart: typeof b.codexModelSmart === "string" ? b.codexModelSmart : current.codexModelSmart,
     codexEffortFast: typeof b.codexEffortFast === "string" ? b.codexEffortFast : current.codexEffortFast,
@@ -40,12 +38,8 @@ export async function POST(req: Request) {
     claudeModelSmart: typeof b.claudeModelSmart === "string" ? b.claudeModelSmart : current.claudeModelSmart,
     claudeEffortFast: typeof b.claudeEffortFast === "string" ? b.claudeEffortFast : current.claudeEffortFast,
     claudeEffortSmart: typeof b.claudeEffortSmart === "string" ? b.claudeEffortSmart : current.claudeEffortSmart,
-    autoGenerate:
-      typeof b.autoGenerate === "boolean" ? b.autoGenerate : current.autoGenerate,
-    maxRetries:
-      typeof b.maxRetries === "number" && b.maxRetries >= 0
-        ? b.maxRetries
-        : current.maxRetries,
+    autoGenerate: false,
+    maxRetries: 0,
     piUrl: typeof b.piUrl === "string" ? b.piUrl : current.piUrl,
     piApiKey: typeof b.piApiKey === "string" ? b.piApiKey : current.piApiKey,
     piModelFast:

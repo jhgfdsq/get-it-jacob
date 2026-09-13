@@ -1,0 +1,8 @@
+Get It Jacob
+Personal derivative of Get It, https://github.com/beltromatti/get-it
+Copyright 2026 Mattia Beltrami, Matteo Impieri, Filippo Difronzo, Luca Feggi.
+Original work licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Modified September 2026 for Mathys Mindykowski: complete PDF preparation,
+page-aware chat, explicit selection actions, independent desktop packaging.
+No affiliation with or endorsement by the original authors or OpenAI.

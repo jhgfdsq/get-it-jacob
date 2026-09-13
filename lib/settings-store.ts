@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: use account-compatible model defaults.
 /**
  * Persistent app settings.
  *
@@ -73,8 +74,8 @@ function defaultsFromEnv(): AppSettings {
     maxRetries: MAX_VIZ_GEN_RETRIES,
     theme: "light",
     provider: "codex",
-    codexModelFast: "gpt-5.5",
-    codexModelSmart: "gpt-5.5",
+    codexModelFast: "auto",
+    codexModelSmart: "auto",
     codexEffortFast: "low",
     codexEffortSmart: "high",
     geminiModelFast: "gemini-flash-latest",
@@ -101,9 +102,7 @@ export function loadSettings(): AppSettings {
     if (parsed && (parsed.v === 1 || parsed.v === VERSION)) {
       const env = defaultsFromEnv();
 
-      const loadedProvider = ["codex", "gemini", "claude", "pi"].includes(parsed.provider as string)
-        ? (parsed.provider as AppSettings["provider"])
-        : env.provider;
+
         
       const piUrl = typeof parsed.piUrl === "string" ? parsed.piUrl : env.piUrl;
       const piApiKey = typeof parsed.piApiKey === "string" ? parsed.piApiKey : env.piApiKey;
@@ -125,15 +124,9 @@ export function loadSettings(): AppSettings {
       }
 
       const s: AppSettings = {
-        autoGenerate:
-          typeof parsed.autoGenerate === "boolean"
-            ? parsed.autoGenerate
-            : env.autoGenerate,
-        maxRetries:
-          typeof parsed.maxRetries === "number" && parsed.maxRetries >= 0
-            ? Math.min(10, Math.floor(parsed.maxRetries))
-            : env.maxRetries,
-        provider: loadedProvider,
+        autoGenerate: false,
+        maxRetries: 0,
+        provider: "codex",
         codexModelFast: typeof parsed.codexModelFast === "string" ? parsed.codexModelFast : env.codexModelFast,
         codexModelSmart: typeof parsed.codexModelSmart === "string" ? parsed.codexModelSmart : env.codexModelSmart,
         codexEffortFast: typeof parsed.codexEffortFast === "string" ? parsed.codexEffortFast : env.codexEffortFast,
@@ -184,9 +177,9 @@ export function saveSettings(s: AppSettings): void {
   const file: Record<string, unknown> = {
     v: VERSION,
     savedAt: Date.now(),
-    autoGenerate: !!s.autoGenerate,
-    maxRetries: Math.min(10, Math.max(0, Math.floor(s.maxRetries))),
-    provider: s.provider,
+    autoGenerate: false,
+    maxRetries: 0,
+    provider: "codex",
     codexModelFast: s.codexModelFast,
     codexModelSmart: s.codexModelSmart,
     codexEffortFast: s.codexEffortFast,

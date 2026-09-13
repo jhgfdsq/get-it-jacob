@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: stop preparation before deletion.
 /**
  * GET    /api/library          → [{ id, filename, …, kgStatus, tagsState }]
  * DELETE /api/library?id=...   → remove a doc from the library (PDF, workctx, KG, tags)
@@ -16,6 +17,7 @@ import fs from "node:fs";
 import { deleteDoc, listDocs, type DocMeta } from "@/lib/store";
 import { kgPath, workCtxPath } from "@/lib/paths";
 import { loadKG } from "@/lib/kg";
+import { cancelPreparation } from "@/lib/preparation";
 import { loadTags } from "@/lib/tags-store";
 
 export const runtime = "nodejs";
@@ -74,6 +76,7 @@ export async function DELETE(req: Request) {
   if (!id) {
     return NextResponse.json({ error: "id query param required" }, { status: 400 });
   }
+  cancelPreparation(id);
   const ok = deleteDoc(id);
   return NextResponse.json({ ok });
 }

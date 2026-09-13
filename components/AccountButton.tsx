@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
 /**
@@ -101,7 +102,7 @@ export default function AccountButton() {
         </button>
         {!open && (
           <span className="viz-tooltip" role="tooltip">
-            AI provider account, usage and sign-out.
+            Compte ChatGPT, utilisation et déconnexion.
           </span>
         )}
       </span>
@@ -138,8 +139,7 @@ function AccountPanel({ open }: { open: boolean }) {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setLoading(true);
-    setErr(null);
+    // The panel mounts for each opening with loading=true and no prior error.
     fetch("/api/provider/status", { cache: "no-store" })
       .then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -296,7 +296,7 @@ function AccountPanel({ open }: { open: boolean }) {
               className="inline-flex items-center gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-2 py-1 text-[10.5px] font-medium text-[var(--ink-700)] transition hover:border-[var(--accent-300)] hover:text-[var(--accent-700)]"
             >
               <Settings2 className="h-2.5 w-2.5" />
-              {data.authenticated ? "Switch provider" : "Connect"}
+              {data.authenticated ? "Reconnecter ChatGPT" : "Connecter ChatGPT"}
             </button>
           </div>
         </>

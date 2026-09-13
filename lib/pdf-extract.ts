@@ -1,3 +1,4 @@
+// Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 /**
  * Server-side PDF text extraction using pdfjs-dist.
  *
@@ -7,6 +8,22 @@
  */
 
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { createCanvas } from "@napi-rs/canvas";
+
+// The launcher sets cwd to the standalone server directory; the PDF assets are
+// explicitly traced into its node_modules. Avoid require.resolve here: Turbopack
+// rewrites it to a numeric module id during the production build.
+const pdfJsRoot = path.join(process.cwd(), "node_modules", "pdfjs-dist");
+const localPdfAssets = {
+  standardFontDataUrl: path.join(pdfJsRoot, "standard_fonts") + path.sep,
+  cMapUrl: path.join(pdfJsRoot, "cmaps") + path.sep,
+  cMapPacked: true,
+  wasmUrl: path.join(pdfJsRoot, "wasm") + path.sep,
+  iccUrl: path.join(pdfJsRoot, "iccs") + path.sep,
+  stopAtErrors: true,
+};
 
 /**
  * Hard ceiling on document length. Beyond this the one-shot agent workflows
@@ -91,6 +108,7 @@ export async function extractPdf(buffer: ArrayBuffer | Uint8Array): Promise<Extr
   const data = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
   const pdf = await getDocument({
     data,
+    ...localPdfAssets,
     useSystemFonts: true,
     disableFontFace: true,
     // We're already on Node (server-side). Don't try to spawn a Web
@@ -259,5 +277,40 @@ export function locateAnchor(page: PdfPage, anchor: string): {
     endX: last.item.x + last.item.width,
     endY: last.item.y,
     fontHeight: last.item.height || 11,
+  };
+}
+
+/** Render original PDF pages locally. No AI or network call is made here. */
+export async function createPdfPageRenderer(buffer: Uint8Array) {
+  const pdf = await getDocument({
+    ...localPdfAssets,
+    data: new Uint8Array(buffer), useSystemFonts: true, disableFontFace: true,
+  }).promise;
+  return {
+    async render(pageIndex: number, outputPath: string, signal?: AbortSignal) {
+      signal?.throwIfAborted();
+      const page = await pdf.getPage(pageIndex + 1);
+      try {
+        const original = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: 2200 / Math.max(original.width, original.height) });
+        const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+        const task = page.render({
+          canvas: canvas as unknown as HTMLCanvasElement,
+          canvasContext: canvas.getContext("2d") as unknown as CanvasRenderingContext2D,
+          viewport,
+        });
+        const cancel = () => task.cancel();
+        signal?.addEventListener("abort", cancel, { once: true });
+        try { await task.promise; } finally { signal?.removeEventListener("abort", cancel); }
+        signal?.throwIfAborted();
+        const temporary = `${outputPath}.tmp`;
+        await fs.writeFile(temporary, canvas.toBuffer("image/png"));
+        await fs.rename(temporary, outputPath);
+        // Release the backing allocation before moving to the next page.
+        canvas.width = 1;
+        canvas.height = 1;
+      } finally { page.cleanup(); }
+    },
+    async close() { await pdf.destroy(); },
   };
 }

@@ -1,5 +1,6 @@
+// Modified for Get It Jacob: isolated app, no upstream update/telemetry.
 /**
- * Get It. — Electron main process.
+ * Get It Jacob — Electron main process.
  *
  * Responsibilities:
  *  1. Resolve the per-user data directory (Electron's userData) and expose
@@ -65,8 +66,8 @@ const {
   refreshCodexStatus,
   onCodexStatusChange,
 } = require("./setup");
-const { maybeRunUpdate } = require("./updater");
-const analytics = require("./analytics");
+
+
 
 // ── Single-instance lock ────────────────────────────────────────────────
 // If the user double-clicks the app icon a second time, focus the existing
@@ -89,9 +90,11 @@ if (!gotLock) {
 // pure-Next dev default (lib/paths.ts → defaultUserDataDir). Electron's
 // default would be `Application Support/Get It` because productName has
 // a space; force the override here BEFORE anyone calls app.getPath().
-app.setName("get-it");
+app.setName("get-it-jacob");
 const ELECTRON_USER_DATA_PARENT = path.dirname(app.getPath("userData"));
-const DATA_DIR = path.join(ELECTRON_USER_DATA_PARENT, "get-it");
+const DATA_DIR = process.env.GETIT_DATA_DIR
+  ? path.resolve(process.env.GETIT_DATA_DIR)
+  : path.join(ELECTRON_USER_DATA_PARENT, "get-it-jacob");
 app.setPath("userData", DATA_DIR);
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(path.join(DATA_DIR, "logs"), { recursive: true });
@@ -184,7 +187,7 @@ async function startEmbeddedServer() {
   const standalone = resolveStandalonePath();
   if (!standalone) {
     dialog.showErrorBox(
-      "Get It. — internal error",
+      "Get It Jacob — internal error",
       "Could not find the embedded server. The packaged app is incomplete.",
     );
     app.quit();
@@ -194,6 +197,8 @@ async function startEmbeddedServer() {
   const env = {
     ...process.env,
     GETIT_DATA_DIR: DATA_DIR,
+    NEXT_TELEMETRY_DISABLED: "1",
+    GETIT_DISABLE_ANALYTICS: "1",
     PORT: String(port),
     HOSTNAME: "127.0.0.1",
     NODE_ENV: "production",
@@ -390,7 +395,7 @@ function createMainWindow() {
 
   if (!serverUrl) {
     dialog.showErrorBox(
-      "Get It. — internal error",
+      "Get It Jacob — internal error",
       "The embedded server did not start.",
     );
     app.quit();
@@ -450,26 +455,10 @@ let bootstrapping = true;
 
 app.whenReady().then(async () => {
   try {
-    // Update check runs BEFORE anything else — the wizard, the embedded
-    // server, the main window. If the user accepts the update, we quit
-    // here (the new installer takes over). Otherwise we proceed with
-    // the normal boot sequence.
-    const userKickedOffUpdate = await maybeRunUpdate();
-    if (userKickedOffUpdate) {
-      // updater.js calls app.quit() on its own; just bail out. The "update"
-      // analytics event is fired from the updater itself, so we don't also
-      // count this launch as an "open" — it's an update, not a session.
-      return;
-    }
-
-    // Anonymous "the app launched" ping (fire-and-forget). Counts a real
-    // session: only fired once we've decided NOT to update and are booting
-    // the app for use. Powers Total/Daily/Weekly/Monthly users.
-    analytics.trackOpen();
-
+    // Personal edition: no upstream updater or telemetry.
     // Run the provider setup/wizard. We can't start the Next server without
     // the AI backend — the agents would crash on the first request.
-    const ok = await ensureProviderReady();
+    const ok = await ensureCodexReady();
     if (!ok) {
       app.quit();
       return;
@@ -480,7 +469,7 @@ app.whenReady().then(async () => {
   } catch (err) {
     bootstrapping = false;
     dialog.showErrorBox(
-      "Get It. — failed to start",
+      "Get It Jacob — failed to start",
       String(err && err.message ? err.message : err),
     );
     app.quit();

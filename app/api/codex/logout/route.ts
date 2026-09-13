@@ -1,3 +1,4 @@
+// Modified for Get It Jacob: disconnect reader runtime too.
 /**
  * POST /api/codex/logout
  *
@@ -6,11 +7,13 @@
  */
 
 import { NextResponse } from "next/server";
+import { clearReaderAuth } from "@/lib/clear-reader-auth";
 import { runLogout } from "@/lib/codex-account";
 
 export const runtime = "nodejs";
 
 export async function POST() {
+  clearReaderAuth();
   const ok = runLogout();
   return NextResponse.json({ ok });
 }
