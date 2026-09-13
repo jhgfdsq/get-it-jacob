@@ -33,10 +33,12 @@ Node.js 22+ et npm. `npm ci`, `npm run test:reader`, `npm run lint`, `npm run bu
 
 Pour assembler localement, définir `GETIT_VERIFIED_CODEX_PATH` vers un exécutable officiel Codex récent signé OpenAI, puis lancer `npm run build:desktop:mac-arm`. Le script ne fournit pas de téléchargement de secours. La version obsolète 0.130.0 est refusée. Aucun identifiant, bibliothèque de test ou exécutable n’est inclus dans le dépôt Git.
 
-Tests de protocole, préparation et schémas visuels : `npm run test:reader`. Régression des grands documents, avec un vrai PDF de 205 pages et une IA simulée : `npx tsx scripts/test-long-pdf.ts`. Créer le PDF fictif avec `node scripts/generate-reader-fixture.cjs`. Test navigateur sur serveur local avec API simulée : `node scripts/test-reader-browser.mjs`. Contrôle Mac complet connecté, consommant de l’IA : `node scripts/test-native.mjs`. Le contrôle natif et les essais de connexion réels nécessitent un environnement local connecté.
+Tests de protocole, préparation et schémas visuels : `npm run test:reader`. Régression des grands documents, avec un vrai PDF de 205 pages et une IA simulée : `npx tsx scripts/test-long-pdf.ts`. Créer le PDF fictif avec `node scripts/generate-reader-fixture.cjs`. Test navigateur sur serveur local avec API simulée : `node scripts/test-reader-browser.mjs`. Contrôle du serveur Mac empaqueté dans un navigateur sans fenêtre, consommant de l’IA : `node scripts/test-native.mjs`. Le contrôle natif et les essais de connexion réels nécessitent un environnement local connecté.
 
 Le workflow de publication amont est archivé dans `docs/release-upstream.yml` et n’est pas exécuté par cette édition.
 
 ## Origine et licence
 
 Dérivé du commit amont `ae0fa999f352b951ab8150fac5dcf9d7ab6fd9a4`, licence Apache 2.0. Voir `LICENSE`, `NOTICE` et le [README original conservé](docs/README-upstream.md). Les dépendances et moteurs conservent leurs licences respectives. Aucune affiliation ou approbation des auteurs d’origine ou d’OpenAI n’est revendiquée.
+
+Les tests automatisés utilisent exclusivement `scripts/background-reader.mjs` et Chrome headless. Ils ne lancent pas l’application principale, n’ouvrent aucune fenêtre visible et ne prennent pas le focus.

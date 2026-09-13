@@ -1,5 +1,5 @@
-import {_electron as electron} from 'playwright';
-import {assertSingleDockApp} from './mac-app-policy.mjs';
+import {launchBackgroundReader} from './background-reader.mjs';
+import {assertNoDockApp} from './mac-app-policy.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 const output=path.resolve('work/qa-native');fs.mkdirSync(output,{recursive:true});
@@ -8,11 +8,11 @@ const env={...process.env,GETIT_DATA_DIR:path.resolve('work/native-data')};
 delete env.ELECTRON_RUN_AS_NODE;delete env.CODEX_BINARY_PATH;
 let app;
 try {
- app=await electron.launch({executablePath,env,timeout:60000});
+ app=await launchBackgroundReader({executablePath,env,timeout:60000});
  const page=await app.firstWindow({timeout:60000});
  await page.waitForURL('http://127.0.0.1:**',{timeout:60000});
  await page.locator('input[type=file]').waitFor({state:'attached'});
- const dockChecks=[assertSingleDockApp(executablePath)];
+ const dockChecks=[assertNoDockApp(executablePath)];
  await page.screenshot({path:path.join(output,'01-home.png')});
  console.log('NATIVE OPEN',page.url());
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -39,13 +39,13 @@ try {
  const done=events.find(e=>e.type==='done');if(!done)throw Error(raw);
  const text=events.filter(e=>e.type==='text').at(-1)?.text??'';
  if(!text.includes('47')||!text.toUpperCase().includes('ORION'))throw Error('Wrong scanned context: '+text);
- dockChecks.push(assertSingleDockApp(executablePath));
+ dockChecks.push(assertNoDockApp(executablePath));
  console.log('NATIVE CHAT PASS',Date.now()-t,text);
  await page.getByText('ORION',{exact:false}).first().waitFor();
  await page.waitForTimeout(500);
  await page.screenshot({path:path.join(output,'03-chat.png')});
  await app.close();app=null;
- app=await electron.launch({executablePath,env,timeout:60000});
+ app=await launchBackgroundReader({executablePath,env,timeout:60000});
  const second=await app.firstWindow();await second.waitForURL('http://127.0.0.1:**',{timeout:60000});
  const origin=new URL(second.url()).origin;
  const post=[];second.on('request',r=>{if(r.method()==='POST'&&!r.url().endsWith('/touch'))post.push(r.url());});

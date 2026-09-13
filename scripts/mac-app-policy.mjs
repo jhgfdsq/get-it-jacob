@@ -11,3 +11,9 @@ export function assertSingleDockApp(executablePath) {
   if(regular.length!==1||regular[0].exe!==executablePath)throw new Error('Unexpected Dock applications: '+JSON.stringify(apps));
   return apps;
 }
+
+export function assertNoDockApp(executablePath) {
+  const apps=readOwnMacApps(executablePath);
+  if(apps.some(a=>a.policy===0))throw new Error('Headless tests must not open a Dock application: '+JSON.stringify(apps));
+  return apps;
+}
