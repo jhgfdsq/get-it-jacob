@@ -21,6 +21,8 @@ import { DATA_DIR } from "./paths";
 import { AUTO_GENERATE_VIZ, MAX_VIZ_GEN_RETRIES } from "./config";
 
 export type AppSettings = {
+  readerPdfPercent?: number;
+  readerChatListVisible?: boolean;
   autoGenerate: boolean;
   maxRetries: number;
   provider: "codex" | "gemini" | "claude" | "pi";
@@ -73,6 +75,8 @@ function defaultsFromEnv(): AppSettings {
     autoGenerate: AUTO_GENERATE_VIZ,
     maxRetries: MAX_VIZ_GEN_RETRIES,
     theme: "light",
+    readerPdfPercent: 54,
+    readerChatListVisible: true,
     provider: "codex",
     codexModelFast: "auto",
     codexModelSmart: "auto",
@@ -165,6 +169,8 @@ export function loadSettings(): AppSettings {
         parsed.theme === "system"
           ? parsed.theme
           : "light"; // default to light when unset/legacy
+      s.readerPdfPercent = typeof parsed.readerPdfPercent === "number" && Number.isFinite(parsed.readerPdfPercent) ? Math.max(1, Math.min(99, parsed.readerPdfPercent)) : 54;
+      s.readerChatListVisible = typeof parsed.readerChatListVisible === "boolean" ? parsed.readerChatListVisible : true;
       return s;
     }
   } catch {
@@ -177,6 +183,8 @@ export function saveSettings(s: AppSettings): void {
   const file: Record<string, unknown> = {
     v: VERSION,
     savedAt: Date.now(),
+    readerPdfPercent: s.readerPdfPercent ?? 54,
+    readerChatListVisible: s.readerChatListVisible ?? true,
     autoGenerate: false,
     maxRetries: 0,
     provider: "codex",

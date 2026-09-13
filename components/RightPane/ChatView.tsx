@@ -25,9 +25,9 @@ type PendingCapture = { key: string; source?: CaptureSource; attachment?: Captur
 type Draft = { text: string; attached: Snapshot | null; captures: PendingCapture[] };
 type PendingTurn = Snapshot & { chatId: string; message: string; error?: string };
 const emptyDraft = (): Draft => ({ text: "", attached: null, captures: [] });
-type Props = { docId: string; pageIndex: number; selectionRequest?: SelectionRequest | null; captureRequests?: CaptureRequest[]; onCapturesConsumed?: (ids: string[]) => void };
+type Props = { chatListVisible?: boolean; docId: string; pageIndex: number; selectionRequest?: SelectionRequest | null; captureRequests?: CaptureRequest[]; onCapturesConsumed?: (ids: string[]) => void };
 
-export default function ChatView({ docId, pageIndex, selectionRequest, captureRequests, onCapturesConsumed }: Props) {
+export default function ChatView({ chatListVisible = true, docId, pageIndex, selectionRequest, captureRequests, onCapturesConsumed }: Props) {
   const [chats, setChats] = useState<ChatThread[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -233,7 +233,7 @@ export default function ChatView({ docId, pageIndex, selectionRequest, captureRe
   return (
     <div className="relative flex h-full">
       {/* Chat list */}
-      <aside className="flex w-32 shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-canvas)]">
+      <aside id="reader-chat-list" aria-label="Discussions du document" className={`${chatListVisible ? "flex" : "hidden"} w-32 shrink-0 flex-col border-r border-[var(--border-subtle)] bg-[var(--surface-canvas)]`}>
         <button
           type="button"
           onClick={createChat}

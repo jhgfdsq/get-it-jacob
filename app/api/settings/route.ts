@@ -26,6 +26,8 @@ export async function POST(req: Request) {
   const b = (body && typeof body === "object" ? body : {}) as Partial<AppSettings>;
   const current = loadSettings();
   const next: AppSettings = {
+    readerPdfPercent: typeof b.readerPdfPercent === "number" && Number.isFinite(b.readerPdfPercent) ? Math.max(1, Math.min(99, b.readerPdfPercent)) : current.readerPdfPercent,
+    readerChatListVisible: typeof b.readerChatListVisible === "boolean" ? b.readerChatListVisible : current.readerChatListVisible,
     provider: "codex",
     codexModelFast: typeof b.codexModelFast === "string" ? b.codexModelFast : current.codexModelFast,
     codexModelSmart: typeof b.codexModelSmart === "string" ? b.codexModelSmart : current.codexModelSmart,

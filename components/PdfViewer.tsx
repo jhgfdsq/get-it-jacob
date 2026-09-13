@@ -1,7 +1,7 @@
 // Modified September 2026 for Get It Jacob; see NOTICE for the fork changes.
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Loader2,
@@ -89,6 +89,7 @@ export default function PdfViewer({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
   const [containerW, setContainerW] = useState(0);
+  const resizeAnchor = useRef<{ pageIndex: string; fraction: number } | null>(null);
   // 1.0 = fit-to-width baseline. Bounded to keep WebGL/canvas sane.
   const [zoomLevel, setZoomLevel] = useState(1);
   const ZOOM_MIN = 0.5;
@@ -122,7 +123,21 @@ export default function PdfViewer({
   useEffect(() => {
     if (!scrollRef.current) return;
     const el = scrollRef.current;
-    const measure = () => setContainerW(el.clientWidth - 64); // minus px padding
+    let previousWidth = 0;
+    const measure = () => {
+      const nextWidth = el.clientWidth - 64;
+      if (previousWidth && Math.abs(nextWidth - previousWidth) > 0.5) {
+        const center = el.getBoundingClientRect().top + el.clientHeight / 2;
+        const pages = [...el.querySelectorAll<HTMLElement>("[data-page]")];
+        const closest = pages.sort((a, b) => {
+          const ar = a.getBoundingClientRect(), br = b.getBoundingClientRect();
+          return Math.max(ar.top - center, center - ar.bottom, 0) - Math.max(br.top - center, center - br.bottom, 0);
+        })[0];
+        if (closest) { const bounds = closest.getBoundingClientRect(); resizeAnchor.current = { pageIndex: closest.dataset.page!, fraction: Math.max(0, Math.min(1, (center - bounds.top) / bounds.height)) }; }
+      }
+      previousWidth = nextWidth;
+      setContainerW(nextWidth);
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -137,6 +152,15 @@ export default function PdfViewer({
     return target / widest;
   }, [containerW, pageDims]);
   const scale = baseScale * zoomLevel;
+  useLayoutEffect(() => {
+    const anchor = resizeAnchor.current, root = scrollRef.current;
+    if (!anchor || !root) return;
+    resizeAnchor.current = null;
+    const page = root.querySelector<HTMLElement>(`[data-page="${anchor.pageIndex}"]`);
+    if (!page) return;
+    const bounds = page.getBoundingClientRect();
+    root.scrollTop += bounds.top + bounds.height * anchor.fraction - (root.getBoundingClientRect().top + root.clientHeight / 2);
+  }, [scale]);
 
   // When the active tag changes, scroll to the page that contains it.
   useEffect(() => {

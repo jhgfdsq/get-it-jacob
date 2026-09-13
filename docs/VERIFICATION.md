@@ -59,3 +59,12 @@ Contrôle réel ChatGPT : deux images synthétiques, dont les noms et chiffres n
 Régression du lecteur empaqueté : PDF de trois pages comprenant un scan préparé en 7,516 secondes, réponse correcte sur le scan en 3,692 secondes, réouverture sans appel IA ni erreur navigateur. Compilation production et TypeScript réussis, ESLint zéro erreur et 20 avertissements hérités. Tous les essais sont exécutés via le helper interne et Chrome headless, sans fenêtre visible, sans activation de l’application principale et sans application Dock de test.
 
 La version 1.0.3 installée a été contrôlée à son tour en arrière-plan : barre présente, action texte désactivée sans sélection, capture active et brouillon visuel restauré. Aucun envoi implicite. Les quatre fichiers JSON des documents utilisateur ont conservé leur empreinte SHA-256 lors du remplacement.
+
+
+## Mise à jour 1.0.4 : largeur et liste des discussions
+
+Séparateur central saisissable à la souris avec curseur horizontal, capture du pointeur et limites minimales pour garder les panneaux utilisables. Double-clic : retour à 54 % pour le PDF. Accès clavier par tabulation, flèches et Début/Fin. Le passage en cours reste ancré pendant le changement de largeur du PDF.
+
+Bouton de panneau permanent en haut à gauche du chat : masque ou réaffiche sa liste de discussions, sans démonter la conversation ni perdre son brouillon. Le texte de réponse récupère les 128 pixels libérés. La proportion et l’état replié sont enregistrés dans les réglages locaux, indépendamment du port du serveur.
+
+Vérification sur le paquet final, exclusivement en arrière-plan : glissement dans les deux sens, limites extrêmes, fenêtre de 960 pixels sans débordement, conservation de la page lue, clavier et double-clic, élargissement du champ et de la conversation après repli, brouillon préservé et historique inchangé. Redémarrage complet sur un autre port : proportion et liste masquée retrouvées. Un changement d’apparence ne réinitialise pas ces préférences. Zéro requête IA pendant ces interactions. Compilation et TypeScript réussis, ESLint zéro erreur, régressions lecteur et capture réussies.

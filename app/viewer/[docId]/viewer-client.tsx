@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { FileText, RefreshCw, AlertCircle, Upload, BookOpen } from "lucide-react";
+import ReaderSplit from "@/components/ReaderSplit";
+import useReaderLayout from "@/components/useReaderLayout";
 import PdfViewer from "@/components/PdfViewer";
 import RightPane, { type RightPaneMode } from "@/components/RightPane";
 import type { CaptureRequest, SelectionRequest } from "@/components/RightPane/ChatView";
@@ -15,6 +17,7 @@ type DocMeta = { docId: string; filename: string; pdfUrl: string; numPages: numb
 type Preparation = { status: "missing" | "preparing" | "ready" | "error"; completedPages: number; totalPages: number; phase?: "pages" | "context"; error?: string };
 
 export default function ViewerClient({ docId }: { docId: string }) {
+  const layout = useReaderLayout();
   const [meta, setMeta] = useState<DocMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preparation, setPreparation] = useState<Preparation | null>(null);
@@ -61,16 +64,14 @@ export default function ViewerClient({ docId }: { docId: string }) {
     </div>
     {preparation?.status !== "ready" && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-4 py-3 text-xs text-[var(--ink-700)]"><p>{preparation?.status === "preparing" ? (preparation.phase === "context" ? "Texte et images indexés. Chargement unique du contexte du chat…" : `Indexation locale : ${preparation.completedPages} / ${preparation.totalPages} pages. Le chat sera disponible à la fin.`) : preparation?.error ?? "Ce document doit être préparé une fois avant de discuter de son contenu et de ses figures."}</p>{preparation && preparation.status !== "preparing" && <button type="button" onClick={prepare} disabled={starting} className="rounded-md bg-[var(--button-primary-bg)] px-3 py-2 text-white">{starting ? "Démarrage…" : "Préparer le document"}</button>}</div>}
     {error && <p role="alert" className="px-4 py-2 text-xs text-red-700">{error}</p>}
-    <div className="flex min-h-0 flex-1 gap-2 bg-[var(--surface-canvas)] p-2">
-      <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
+    {layout.error && <p role="alert" className="px-4 text-xs text-red-700">{layout.error}</p>}
+    <ReaderSplit percent={layout.readerPdfPercent} onChange={(value, save) => layout.update({ readerPdfPercent: value }, save)} left={
         <PdfViewer key={docId} pdfUrl={meta.pdfUrl} numPages={meta.numPages} pageDims={meta.pages} tags={[]} activeTagId={null} onTagClick={() => {}} onPageChange={setPageIndex} onCapture={capture => { setCaptureRequests(items => [...items, { ...capture, id: crypto.randomUUID() }]); setMode("chat"); }} onSelectionAction={(action, passage) => {
           if (action === "discuss" || action === "explain") { setSelection({ id: Date.now(), action, ...passage }); setMode("chat"); }
           else { setVisual({ id: Date.now(), kind: action, ...passage }); setMode("visualizer"); }
         }} />
-      </div>
-      <div className="flex w-[46%] min-w-[400px] max-w-[760px] flex-col overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-raised)]">
-        <RightPane docId={docId} mode={mode} onModeChange={setMode} pageIndex={pageIndex} selectionRequest={selection} visualRequest={visual} ready={preparation?.status === "ready"} captureRequests={captureRequests} onCapturesConsumed={consumeCaptures} />
-      </div>
-    </div>
+      } right={
+        <RightPane docId={docId} mode={mode} onModeChange={setMode} pageIndex={pageIndex} selectionRequest={selection} visualRequest={visual} ready={preparation?.status === "ready"} captureRequests={captureRequests} onCapturesConsumed={consumeCaptures} chatListVisible={layout.readerChatListVisible} onChatListToggle={() => layout.update({ readerChatListVisible: !layout.readerChatListVisible })} />
+      } />
   </div>;
 }

@@ -8,6 +8,8 @@ Ouvrir **Get It Jacob.app**, puis déposer un PDF. Le lecteur et son serveur int
 
 Le numéro de la page visible est joint à chaque question. Une page mentionnée explicitement dans la question ou un passage sélectionné est prioritaire. La conversation existante est reprise entre les messages et après redémarrage.
 
+Faites glisser la séparation centrale pour ajuster les largeurs du PDF et du chat. Double-cliquez dessus pour revenir à la disposition initiale. Le bouton de panneau en haut à gauche du chat masque ou réaffiche la liste des discussions. Ces choix sont conservés au redémarrage.
+
 La barre du lecteur reste visible en haut. **Discuter** ajoute le passage sélectionné au brouillon du chat. **Créer un visuel** regroupe **Graphique** et **Diagramme**. Ces actions restent grisées sans sélection de texte. La navigation, le zoom et l’ajustement à la largeur sont regroupés dans la même barre. Les visuels nécessitent une demande explicite et sont conservés dans l’onglet **Visuels**.
 
 **Capturer** reste disponible sans sélection de texte : tracer une zone sur une page, déplacer ou redimensionner le cadre, puis choisir **Ajouter au chat**. Les captures s’accumulent en vignettes numérotées dans le brouillon. Chaque vignette peut être agrandie ou retirée. La question et toutes les captures restantes sont envoyées ensemble uniquement au clic sur **Envoyer**. Aucun appel IA n’est effectué à la capture ou à son ajout.
