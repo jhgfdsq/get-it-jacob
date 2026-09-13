@@ -26,17 +26,6 @@ const localPdfAssets = {
 };
 
 /**
- * Hard ceiling on document length. Beyond this the one-shot agent workflows
- * (knowledge-graph build, per-page detection, the study tools that feed the
- * model the whole document) would push context size, latency, and the user's
- * Codex usage window past what a desktop study session can absorb. We reject
- * up front with a clear message rather than degrade silently by sending only
- * fragments of the PDF to the model. Tunable — raise it as model context and
- * the batching pipeline allow.
- */
-export const MAX_PDF_PAGES = 150;
-
-/**
  * A page counts as "text-bearing" once it carries at least this many
  * alphanumeric characters (~25-30 words). Figure captions, page numbers and
  * stray glyphs fall below it; a real paragraph of prose clears it easily.
@@ -50,7 +39,6 @@ const MIN_TOTAL_ALNUM = 600;
 const MIN_RICH_RATIO = 0.4;
 
 export type PdfRejectReason =
-  | "too_many_pages"
   | "no_text"
   | "image_dominant"
   | "unreadable";
@@ -115,54 +103,47 @@ export async function extractPdf(buffer: ArrayBuffer | Uint8Array): Promise<Extr
     // Worker — in the Next standalone build the worker .mjs is not
     // emitted alongside the main module, and pdfjs falls over with
     // "Setting up fake worker failed". Running in-process is fine for
-    // our PDF sizes (textbook samples + user uploads up to ~20 MB).
+    // our desktop import pipeline.
     disableWorker: true,
   } as Parameters<typeof getDocument>[0]).promise;
 
-  // Page-count gate — checked before we walk the pages so a 1000-page upload
-  // is rejected cheaply instead of being fully extracted just to be refused.
-  if (pdf.numPages > MAX_PDF_PAGES) {
-    const total = pdf.numPages;
-    pdf.destroy();
-    throw new PdfUnsupportedError(
-      "too_many_pages",
-      `This PDF has ${total} pages. Get It. supports documents up to ${MAX_PDF_PAGES} pages.`,
-      { numPages: total, textPages: 0, totalAlnum: 0, richRatio: 0 },
-    );
-  }
-
   const pages: PdfPage[] = [];
-  for (let p = 1; p <= pdf.numPages; p++) {
-    const page = await pdf.getPage(p);
-    const viewport = page.getViewport({ scale: 1 });
-    const tc = await page.getTextContent();
-    const items: PdfTextItem[] = [];
-    const textParts: string[] = [];
-    for (const it of tc.items as Array<Record<string, unknown>>) {
-      const transform = it.transform as number[];
-      // transform = [a, b, c, d, e, f] — scale_x, skew_y, skew_x, scale_y, e=x, f=y
-      const x = transform[4];
-      const y = transform[5];
-      const width = (it.width as number) ?? 0;
-      const height = (it.height as number) ?? Math.abs(transform[3]);
-      const str = (it.str as string) ?? "";
-      const eol = (it.hasEOL as boolean) ?? false;
-      items.push({ str, x, y, width, height, eol });
-      if (str) textParts.push(str);
-      if (eol) textParts.push("\n");
-      else if (str) textParts.push(" ");
+  // No page-count ceiling: extract sequentially and release each page before
+  // moving on. Visual preparation also processes bounded batches.
+  try {
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale: 1 });
+      const tc = await page.getTextContent();
+      const items: PdfTextItem[] = [];
+      const textParts: string[] = [];
+      for (const it of tc.items as Array<Record<string, unknown>>) {
+        const transform = it.transform as number[];
+        // transform = [a, b, c, d, e, f] — scale_x, skew_y, skew_x, scale_y, e=x, f=y
+        const x = transform[4];
+        const y = transform[5];
+        const width = (it.width as number) ?? 0;
+        const height = (it.height as number) ?? Math.abs(transform[3]);
+        const str = (it.str as string) ?? "";
+        const eol = (it.hasEOL as boolean) ?? false;
+        items.push({ str, x, y, width, height, eol });
+        if (str) textParts.push(str);
+        if (eol) textParts.push("\n");
+        else if (str) textParts.push(" ");
+      }
+      pages.push({
+        pageIndex: p - 1,
+        width: viewport.width,
+        height: viewport.height,
+        items,
+        text: textParts.join("").replace(/[ \t]+\n/g, "\n").replace(/\n{2,}/g, "\n\n").trim(),
+      });
+      page.cleanup();
     }
-    pages.push({
-      pageIndex: p - 1,
-      width: viewport.width,
-      height: viewport.height,
-      items,
-      text: textParts.join("").replace(/[ \t]+\n/g, "\n").replace(/\n{2,}/g, "\n\n").trim(),
-    });
-    page.cleanup();
+    return { numPages: pdf.numPages, pages };
+  } finally {
+    await pdf.destroy();
   }
-  pdf.destroy();
-  return { numPages: pdf.numPages, pages };
 }
 
 /** Count of alphanumeric (letters/digits, any script) characters — a

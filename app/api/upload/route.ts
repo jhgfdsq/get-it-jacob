@@ -20,7 +20,6 @@ import path from "node:path";
 import {
   extractPdf,
   PdfUnsupportedError,
-  MAX_PDF_PAGES,
   type ExtractedPdf,
   type PdfRejectReason,
   type PdfQualityStats,
@@ -35,7 +34,6 @@ import { getDoc, newDocId, saveDoc } from "@/lib/store";
 import { startPreparation } from "@/lib/preparation";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
 
 /** Extensions we accept as Markdown and render to PDF before ingesting. */
 const MARKDOWN_EXT = /\.(md|markdown|mdown|mkd|mdwn)$/i;
@@ -50,10 +48,8 @@ const SAMPLE_NAME_TO_DOC_ID: Record<string, string> = {
 
 /** User-facing copy for every rejection reason. Coherent voice across the
  *  whole gate so the UploadCard alert reads the same regardless of cause. */
-function rejectionMessage(reason: PdfRejectReason, stats?: PdfQualityStats): string {
+function rejectionMessage(reason: PdfRejectReason): string {
   switch (reason) {
-    case "too_many_pages":
-      return `Ce document contient ${stats?.numPages ?? "trop de"} pages. La limite est de ${MAX_PDF_PAGES} pages. Importez un chapitre ou un extrait plus court.`;
     case "unreadable":
     default:
       return "Ce PDF est illisible, protégé par mot de passe ou endommagé. Retirez sa protection ou exportez-le à nouveau.";
@@ -62,7 +58,7 @@ function rejectionMessage(reason: PdfRejectReason, stats?: PdfQualityStats): str
 
 function rejectResponse(reason: PdfRejectReason, stats?: PdfQualityStats) {
   return NextResponse.json(
-    { error: rejectionMessage(reason, stats), code: reason, stats },
+    { error: rejectionMessage(reason), code: reason, stats },
     { status: 422 },
   );
 }

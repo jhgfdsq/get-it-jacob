@@ -309,7 +309,7 @@ export default function UploadCard() {
           )}
         </p>
         <p className="mt-3 text-[11.5px] text-[var(--ink-400)]">
-          PDF, scans et Markdown · 150 pages maximum · Lecture initiale avec votre connexion IA.
+          PDF, scans et Markdown · Sans limite de pages · 80 Mo maximum par fichier.
         </p>
       </div>
 

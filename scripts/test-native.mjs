@@ -1,4 +1,5 @@
 import {_electron as electron} from 'playwright';
+import {assertSingleDockApp} from './mac-app-policy.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 const output=path.resolve('work/qa-native');fs.mkdirSync(output,{recursive:true});
@@ -11,6 +12,7 @@ try {
  const page=await app.firstWindow({timeout:60000});
  await page.waitForURL('http://127.0.0.1:**',{timeout:60000});
  await page.locator('input[type=file]').waitFor({state:'attached'});
+ const dockChecks=[assertSingleDockApp(executablePath)];
  await page.screenshot({path:path.join(output,'01-home.png')});
  console.log('NATIVE OPEN',page.url());
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -37,6 +39,7 @@ try {
  const done=events.find(e=>e.type==='done');if(!done)throw Error(raw);
  const text=events.filter(e=>e.type==='text').at(-1)?.text??'';
  if(!text.includes('47')||!text.toUpperCase().includes('ORION'))throw Error('Wrong scanned context: '+text);
+ dockChecks.push(assertSingleDockApp(executablePath));
  console.log('NATIVE CHAT PASS',Date.now()-t,text);
  await page.getByText('ORION',{exact:false}).first().waitFor();
  await page.waitForTimeout(500);
@@ -50,7 +53,7 @@ try {
  await second.locator('.pdf-selectable-text span').first().waitFor({state:'attached'});
  await second.waitForTimeout(2500);
  await second.screenshot({path:path.join(output,'04-restarted.png')});if(post.length)throw Error('Spontaneous POST on reopening '+post.join());
- fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({pass:true,docId,preparationMs,errors,text,automaticPostsOnReopen:post},null,2));
+ fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({pass:true,docId,preparationMs,errors,text,automaticPostsOnReopen:post,dockChecks},null,2));
  if(errors.length)throw Error(errors.join('\n'));
  console.log('NATIVE RESTART PASS');
 } finally {await app?.close();}

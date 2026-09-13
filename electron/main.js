@@ -219,7 +219,14 @@ async function startEmbeddedServer() {
     if (piPath) env.PI_BINARY_PATH = piPath;
   } catch { /* best-effort; providers also self-resolve */ }
 
-  const nodeBin = process.execPath; // Electron's own node — works for ES modules
+  // The PDF canvas initializes AppKit for native font rendering. Running it
+  // through the main app executable registers another regular Dock application.
+  // Electron's signed helper already declares LSUIElement and remains internal.
+  const executableName = path.basename(process.execPath);
+  const helperName = `${executableName} Helper`;
+  const helperBin = path.join(process.resourcesPath, "..", "Frameworks", `${helperName}.app`, "Contents", "MacOS", helperName);
+  const nodeBin = process.platform === "darwin" ? helperBin : process.execPath;
+  if (!fs.existsSync(nodeBin)) throw new Error("Le moteur interne du lecteur est absent. Réinstallez Get It Jacob.");
   // Spawn the watchdog wrapper if it was copied next to server.js by
   // electron-prepare; fall back to plain server.js otherwise. The watchdog
   // monitors our pid and tree-kills the server if Electron dies abruptly

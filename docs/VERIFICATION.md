@@ -15,3 +15,11 @@ Contrôle natif de l’application assemblée : import avec ouverture automatiqu
 ## Incident du moteur d’origine
 
 Le test d’aide de l’ancien exécutable npm Codex 0.130.0 a déclenché un blocage macOS. Ce moteur a été exclu de l’édition personnelle. Le binaire de remplacement provient du runtime officiel déjà installé et utilisé sur ce Mac, version `0.154.0-alpha.6.2`, signature OpenAI OpCo LLC vérifiée. Sa signature est conservée lors de l’assemblage. Aucune protection macOS n’a été désactivée et aucun fichier bloqué n’a été restauré.
+
+## Mise à jour 1.0.1
+
+Le lancement d’origine réutilisait l’exécutable de l’application principale pour le serveur PDF. Le chargement du rendu natif l’enregistrait comme une deuxième application Dock (politique AppKit regular). Le serveur utilise désormais le helper Electron interne déjà configuré LSUIElement. Contrôle par NSWorkspace au démarrage et pendant le chat : une seule application regular, Get It Jacob, et un serveur accessory sans icône. La politique est décrite dans la [documentation Apple LSUIElement](https://developer.apple.com/documentation/bundleresources/information-property-list/lsuielement).
+
+La limite de 150 pages a été retirée. Régression avec PDF réel de 205 pages : import, extraction complète, rendu de 205 pages et préparation en 69 lots avec IA simulée, contexte complet avant ready. Aucun appel IA externe dans ce test. Un PDF corrompu reste refusé. La limite de 80 Mo par fichier reste indépendante du nombre de pages.
+
+Le contrôle natif de 205 pages vérifie aussi l’admission par l’interface installable, la progression de 205 pages, puis annule explicitement la préparation de test. Les tests du chat natif utilisent un PDF distinct de 3 pages avec une vraie réponse IA.

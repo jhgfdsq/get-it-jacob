@@ -4,7 +4,7 @@
 
 ## Utilisation
 
-Ouvrir **Get It Jacob.app**, puis déposer un PDF. La préparation examine chaque page sous forme de texte et d’image, conserve les notes visuelles, puis initialise la première conversation avec le contexte complet. Le lecteur s’ouvre lorsque tout est prêt. Les scans sans texte sont acceptés.
+Ouvrir **Get It Jacob.app**, puis déposer un PDF. Le lecteur et son serveur interne ne présentent qu’une seule icône dans le Dock. La préparation examine chaque page sous forme de texte et d’image, conserve les notes visuelles, puis initialise la première conversation avec le contexte complet. Le lecteur s’ouvre lorsque tout est prêt. Les scans sans texte sont acceptés.
 
 Le numéro de la page visible est joint à chaque question. Une page mentionnée explicitement dans la question ou un passage sélectionné est prioritaire. La conversation existante est reprise entre les messages et après redémarrage.
 
@@ -20,7 +20,7 @@ La connexion existante est utilisée sans recopier ses identifiants dans le proj
 
 ## Limites explicites
 
-- 150 pages maximum par document. Un document très dense peut dépasser la fenêtre de contexte du modèle, auquel cas la préparation indique une erreur au lieu de masquer des pages manquantes.
+- Aucune limite imposée au nombre de pages, y compris au-delà de 200 pages. Chaque fichier peut peser jusqu’à 80 Mo. Un document très dense peut dépasser la fenêtre de contexte du modèle, auquel cas la préparation indique une erreur au lieu de masquer des pages manquantes.
 - La préparation initiale utilise l’IA et l’abonnement. Les grands PDF peuvent prendre plusieurs minutes. Aucune durée universelle n’est garantie.
 - Les notes visuelles sont des interprétations et peuvent contenir des erreurs. Les chiffres peu lisibles sont signalés. Le PDF original reste la référence.
 - Un scan sans couche texte peut être discuté via la page courante, mais son texte ne peut pas être surligné dans le lecteur.
@@ -33,7 +33,7 @@ Node.js 22+ et npm. `npm ci`, `npm run test:reader`, `npm run lint`, `npm run bu
 
 Pour assembler localement, définir `GETIT_VERIFIED_CODEX_PATH` vers un exécutable officiel Codex récent signé OpenAI, puis lancer `npm run build:desktop:mac-arm`. Le script ne fournit pas de téléchargement de secours. La version obsolète 0.130.0 est refusée. Aucun identifiant, bibliothèque de test ou exécutable n’est inclus dans le dépôt Git.
 
-Tests de protocole, préparation et schémas visuels : `npm run test:reader`. Créer le PDF fictif avec `node scripts/generate-reader-fixture.cjs`. Test navigateur sur serveur local avec API simulée : `node scripts/test-reader-browser.mjs`. Contrôle Mac complet connecté, consommant de l’IA : `node scripts/test-native.mjs`. Le contrôle natif et les essais de connexion réels nécessitent un environnement local connecté.
+Tests de protocole, préparation et schémas visuels : `npm run test:reader`. Régression des grands documents, avec un vrai PDF de 205 pages et une IA simulée : `npx tsx scripts/test-long-pdf.ts`. Créer le PDF fictif avec `node scripts/generate-reader-fixture.cjs`. Test navigateur sur serveur local avec API simulée : `node scripts/test-reader-browser.mjs`. Contrôle Mac complet connecté, consommant de l’IA : `node scripts/test-native.mjs`. Le contrôle natif et les essais de connexion réels nécessitent un environnement local connecté.
 
 Le workflow de publication amont est archivé dans `docs/release-upstream.yml` et n’est pas exécuté par cette édition.
 
